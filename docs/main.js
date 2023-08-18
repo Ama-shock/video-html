@@ -61,18 +61,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
         audioSelect.addEventListener('change', captureStream);
 
         document.body.append(fullScreen);
+        
+        if(localStorage.videoDevice) videoSelect.value = localStorage.videoDevice;
+        if(localStorage.audioDevice) audioSelect.value = localStorage.audioDevice;
     } 
 
     async function captureStream() {
+        const videoDevice = videoSelect.value || undefined;
+        const audioDevice = audioSelect.value || undefined;
         video.srcObject?.getTracks().forEach(track=>track.stop());
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                deviceId: videoSelect.value || undefined,
+                deviceId: videoDevice,
                 width: 1920,
                 height: 1080
             },
             audio: {
-                deviceId: audioSelect.value || undefined,
+                deviceId: audioDevice,
                 suppressLocalAudioPlayback: false,
                 echoCancellation: false,
                 noiseSuppression: false,
@@ -82,6 +87,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
         video.srcObject = stream;
         video.play();
+
+        if(videoDevice) localStorage.videoDevice = videoDevice;
+        if(audioDevice) localStorage.audioDevice = audioDevice;
     }
 
 });
