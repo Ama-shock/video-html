@@ -30,6 +30,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
     
     const videoSelect = document.createElement('select');
     const audioSelect = document.createElement('select');
+
+    const fullScreen = document.createElement('button');
+    fullScreen.innerText = 'fullScreen';
+    fullScreen.addEventListener('click', () => document.querySelector('video').requestFullscreen() );
     
     async function enumerateDevices() {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -55,6 +59,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
         document.body.append(audioSelect);
         audioSelect.value = '';
         audioSelect.addEventListener('change', captureStream);
+
+        document.body.append(fullScreen);
     } 
 
     async function captureStream() {
