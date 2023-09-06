@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
         document.body.removeChild(button);
         await captureStream();
         await enumerateDevices();
+        await captureStream();
     }, { once: true });
     
 
@@ -86,7 +87,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
         });
 
         video.srcObject = stream;
-        video.play();
+        await video.play();
 
         if(videoDevice) localStorage.videoDevice = videoDevice;
         if(audioDevice) localStorage.audioDevice = audioDevice;
