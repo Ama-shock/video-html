@@ -1,9 +1,12 @@
 {
     "compilerOptions": {
-        "strict": true
-    },
-    "include": [
-        "./src/**/*.ts",
-        "./src/**/*.tsx"
-    ]
+        "strict": true,
+        "jsx": "react-jsx",
+        "target": "ES2024",
+        "resolveJsonModule": true,
+        "lib": [
+            "DOM",
+            "WebWorker"
+        ]
+    }
 }
