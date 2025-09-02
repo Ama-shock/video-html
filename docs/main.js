@@ -73,12 +73,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
         video.srcObject?.getTracks().forEach(track=>track.stop());
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                deviceId: videoDevice,
+                deviceId: { exact: videoDevice },
                 width: 1920,
                 height: 1080
             },
             audio: {
-                deviceId: audioDevice,
+                deviceId: { exact: audioDevice },
                 suppressLocalAudioPlayback: false,
                 echoCancellation: false,
                 noiseSuppression: false,
