@@ -1,24 +1,29 @@
 {
   "name": "video-capturer",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node build.ts",
+    "dev": "node build.ts --watch",
+    "check": "biome check src",
+    "lint": "biome lint src",
+    "format": "biome format --write src",
+    "build:worker": "cd cf-worker && npm run build",
+    "deploy:worker": "cd cf-worker && npm run deploy"
   },
   "author": "Ama-shock",
   "license": "MIT",
-  "main": "index.js",
-  "description": "",
-  "dependencies": {
-    "@reduxjs/toolkit": "^2.6.1",
-    "@types/react": "^19.1.1",
-    "@types/react-dom": "^19.1.2",
-    "@types/web-push": "^3.6.4",
-    "esbuild": "^0.25.2",
+  "description": "Switch BT WebSocket video capture and controller relay",
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.6",
+    "@reduxjs/toolkit": "^2.11.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.27.3",
     "normalize.css": "^8.0.1",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
-    "web-push": "^3.6.7"
-  }
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-redux": "^9.2.0",
+    "typescript": "^5.9.3"
+  },
+  "type": "module"
 }

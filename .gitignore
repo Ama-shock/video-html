@@ -1,3 +1,16 @@
 
 node_modules
+cf-worker/node_modules
+cf-worker/.wrangler
+.wrangler
 .keys
+
+# ビルド成果物
+docs/app.js
+docs/app.js.map
+docs/sw.js
+docs/sw.js.map
+docs/main.js
+docs/main.css
+docs/main.js.map
+docs/main.css.map

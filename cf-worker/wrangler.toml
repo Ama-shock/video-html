@@ -1,0 +1,20 @@
+name = "video-html-gateway"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Allowed origin (update to your actual domain)
+ALLOWED_ORIGIN = "https://your-domain.example.com"
+# VAPID subject (mailto: or https: URL)
+VAPID_SUBJECT = "mailto:admin@example.com"
+
+# Secrets (set with: wrangler secret put <NAME>)
+# VAPID_PRIVATE_KEY_D   — base64url-encoded P-256 private key scalar (32 bytes)
+# VAPID_PUBLIC_KEY      — base64url-encoded P-256 uncompressed public key (65 bytes)
+# GATEWAY_KEY_ID        — base64url-encoded 8-byte key identifier
+
+[[kv_namespaces]]
+# For rate limiting / nonce deduplication (optional)
+binding = "KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
