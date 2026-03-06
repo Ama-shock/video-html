@@ -23,7 +23,7 @@ const initialState: AppState = {
     videoWidth: 1920,
     videoHeight: 1080,
     switchBtWsUrl: 'ws://localhost:8765',
-    gatewayUrl: 'https://your-worker.your-account.workers.dev',
+    gatewayUrl: '',
     initialized: false,
 };
 

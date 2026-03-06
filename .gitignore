@@ -2,6 +2,7 @@
 node_modules
 cf-worker/node_modules
 cf-worker/.wrangler
+cf-worker/.dev.vars
 .wrangler
 .keys
 
@@ -14,3 +15,4 @@ docs/main.js
 docs/main.css
 docs/main.js.map
 docs/main.css.map
+docs/non_resident_vapid_bg.wasm

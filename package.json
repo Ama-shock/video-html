@@ -25,5 +25,8 @@
     "react-redux": "^9.2.0",
     "typescript": "^5.9.3"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@ama-shock/non-resident-vapid": "github:Ama-shock/non-resident-vapid#v0.1.0"
+  }
 }

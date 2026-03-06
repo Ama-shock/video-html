@@ -44,14 +44,14 @@ export default function SettingsPanel() {
 
                 <h3>バンドルゲートウェイ</h3>
                 <div className="form-group">
-                    <label>Cloudflare Worker URL</label>
+                    <label>ゲートウェイ URL</label>
                     <input
                         type="text"
                         value={gatewayInput}
                         onChange={e => setGatewayInput(e.target.value)}
-                        placeholder="https://video-html-gateway.your-account.workers.dev"
+                        placeholder="空欄 = 同一オリジン (docker-compose ローカル環境)"
                     />
-                    <p className="hint">WebPush シグナリングに使用するサーバーです。</p>
+                    <p className="hint">WebPush シグナリングに使用するサーバーです。空欄にすると同一オリジン経由で Caddy がゲートウェイへ転送します。本番環境では Cloudflare Worker の URL を入力してください。</p>
                 </div>
 
                 <button className="btn btn-primary" onClick={handleSave}>

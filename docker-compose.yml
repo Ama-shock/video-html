@@ -1,13 +1,28 @@
-version: "3.3"
 services:
-  web:
-    image: nginx
+  # 静的ファイルサーバー + API プロキシ
+  caddy:
+    image: caddy:alpine
     ports:
-      - 80:80
+      - "80:80"
     volumes:
-      - ./public:/usr/share/nginx/html
-  node:
-    image: node
-    working_dir: /work
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./docs:/srv/docs:ro
+    depends_on:
+      - gateway
+
+  # クレデンシャルバンドルゲートウェイ (wrangler dev でローカル実行)
+  # cf-worker/.dev.vars.example をコピーして .dev.vars に鍵を設定してください。
+  gateway:
+    image: node:22-slim
+    working_dir: /app
+    command: sh -c "npm ci && npx wrangler dev"
     volumes:
-      - ./:/work
+      - ./cf-worker:/app
+      - gateway_modules:/app/node_modules
+      - wrangler_cache:/root/.wrangler
+    expose:
+      - "3000"
+
+volumes:
+  gateway_modules:
+  wrangler_cache:
