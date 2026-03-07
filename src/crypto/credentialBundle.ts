@@ -9,9 +9,9 @@
 import { encode_credential_bundle_wasm } from '@ama-shock/non-resident-vapid';
 
 export type PushSubscription = {
-    endpoint: string;
-    p256dh: string; // base64url
-    auth: string;   // base64url
+	endpoint: string;
+	p256dh: string; // base64url
+	auth: string; // base64url
 };
 
 export type CredentialBundle = Uint8Array;
@@ -25,37 +25,37 @@ export type CredentialBundle = Uint8Array;
  * @param expirationSec  有効期限 Unix タイムスタンプ (秒)
  */
 export async function encodeCredentialBundle(
-    subscription: PushSubscription,
-    gatewayPublicKeyB64: string,
-    keyIdB64: string,
-    expirationSec: number,
+	subscription: PushSubscription,
+	gatewayPublicKeyB64: string,
+	keyIdB64: string,
+	expirationSec: number,
 ): Promise<CredentialBundle> {
-    const subscriptionJson = JSON.stringify({
-        endpoint: subscription.endpoint,
-        p256dh: subscription.p256dh,
-        auth: subscription.auth,
-    });
+	const subscriptionJson = JSON.stringify({
+		endpoint: subscription.endpoint,
+		p256dh: subscription.p256dh,
+		auth: subscription.auth,
+	});
 
-    const b64url = encode_credential_bundle_wasm(
-        subscriptionJson,
-        keyIdB64,
-        gatewayPublicKeyB64,
-        BigInt(expirationSec),
-    );
+	const b64url = encode_credential_bundle_wasm(
+		subscriptionJson,
+		keyIdB64,
+		gatewayPublicKeyB64,
+		BigInt(expirationSec),
+	);
 
-    return fromBase64Url(b64url);
+	return fromBase64Url(b64url);
 }
 
 export function toBase64Url(bytes: Uint8Array): string {
-    return btoa(String.fromCharCode(...bytes))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
+	return btoa(String.fromCharCode(...bytes))
+		.replace(/\+/g, '-')
+		.replace(/\//g, '_')
+		.replace(/=+$/, '');
 }
 
 export function fromBase64Url(b64: string): Uint8Array {
-    const pad = b64.replace(/-/g, '+').replace(/_/g, '/');
-    const padding = '='.repeat((4 - (pad.length % 4)) % 4);
-    const bin = atob(pad + padding);
-    return Uint8Array.from(bin, c => c.charCodeAt(0));
+	const pad = b64.replace(/-/g, '+').replace(/_/g, '/');
+	const padding = '='.repeat((4 - (pad.length % 4)) % 4);
+	const bin = atob(pad + padding);
+	return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 }

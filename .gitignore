@@ -7,12 +7,12 @@ cf-worker/.dev.vars
 .keys
 
 # ビルド成果物
-docs/app.js
-docs/app.js.map
-docs/sw.js
-docs/sw.js.map
-docs/main.js
-docs/main.css
-docs/main.js.map
-docs/main.css.map
-docs/non_resident_vapid_bg.wasm
+public/app.js
+public/app.js.map
+public/sw.js
+public/sw.js.map
+public/main.js
+public/main.css
+public/main.js.map
+public/main.css.map
+public/non_resident_vapid_bg.wasm

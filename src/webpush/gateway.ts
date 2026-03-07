@@ -4,30 +4,35 @@
  * クレデンシャルバンドルをゲートウェイに送ってプッシュ配信する。
  */
 
-import { encodeCredentialBundle, type PushSubscription, toBase64Url, fromBase64Url } from '../crypto/credentialBundle';
-import { type WebPushSubscriptionInfo } from './subscription';
+import {
+	encodeCredentialBundle,
+	fromBase64Url,
+	type PushSubscription,
+	toBase64Url,
+} from '../crypto/credentialBundle';
+import type { WebPushSubscriptionInfo } from './subscription';
 
 export type GatewayInfo = {
-    url: string;
-    publicKey: string; // base64url P-256 公開鍵
-    keyId: string;     // base64url 8-byte key ID
+	url: string;
+	publicKey: string; // base64url P-256 公開鍵
+	keyId: string; // base64url 8-byte key ID
 };
 
 /**
  * ゲートウェイから公開鍵と鍵 ID を取得する。
  */
 export async function fetchGatewayInfo(gatewayUrl: string): Promise<GatewayInfo> {
-    const [pkResp, kidResp] = await Promise.all([
-        fetch(`${gatewayUrl}/vapid-public-key`),
-        fetch(`${gatewayUrl}/gateway-key-id`),
-    ]);
+	const [pkResp, kidResp] = await Promise.all([
+		fetch(`${gatewayUrl}/vapid-public-key`),
+		fetch(`${gatewayUrl}/gateway-key-id`),
+	]);
 
-    if (!pkResp.ok || !kidResp.ok) throw new Error('Failed to fetch gateway info');
+	if (!pkResp.ok || !kidResp.ok) throw new Error('Failed to fetch gateway info');
 
-    const { publicKey } = await pkResp.json() as { publicKey: string };
-    const { keyId } = await kidResp.json() as { keyId: string };
+	const { publicKey } = (await pkResp.json()) as { publicKey: string };
+	const { keyId } = (await kidResp.json()) as { keyId: string };
 
-    return { url: gatewayUrl, publicKey, keyId };
+	return { url: gatewayUrl, publicKey, keyId };
 }
 
 /**
@@ -38,20 +43,20 @@ export async function fetchGatewayInfo(gatewayUrl: string): Promise<GatewayInfo>
  * @param validForSeconds  有効期間（秒、最大 86400）
  */
 export async function createRoomKey(
-    sub: WebPushSubscriptionInfo,
-    gateway: GatewayInfo,
-    validForSeconds: number,
+	sub: WebPushSubscriptionInfo,
+	gateway: GatewayInfo,
+	validForSeconds: number,
 ): Promise<string> {
-    const expirationSec = Math.floor(Date.now() / 1000) + Math.min(validForSeconds, 86400);
+	const expirationSec = Math.floor(Date.now() / 1000) + Math.min(validForSeconds, 86400);
 
-    const bundle = await encodeCredentialBundle(
-        sub as PushSubscription,
-        gateway.publicKey,
-        gateway.keyId,
-        expirationSec,
-    );
+	const bundle = await encodeCredentialBundle(
+		sub as PushSubscription,
+		gateway.publicKey,
+		gateway.keyId,
+		expirationSec,
+	);
 
-    return toBase64Url(bundle);
+	return toBase64Url(bundle);
 }
 
 /**
@@ -63,21 +68,21 @@ export async function createRoomKey(
  * @param ttl  TTL 秒 (デフォルト 60)
  */
 export async function pushToBundle(
-    destBundle: string,
-    payload: unknown,
-    gatewayUrl: string,
-    ttl = 60,
+	destBundle: string,
+	payload: unknown,
+	gatewayUrl: string,
+	ttl = 60,
 ): Promise<void> {
-    const resp = await fetch(`${gatewayUrl}/push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bundle: destBundle, payload, ttl }),
-    });
+	const resp = await fetch(`${gatewayUrl}/push`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ bundle: destBundle, payload, ttl }),
+	});
 
-    if (!resp.ok) {
-        const err = await resp.json() as { error?: string };
-        throw new Error(`Push failed: ${err.error ?? resp.statusText}`);
-    }
+	if (!resp.ok) {
+		const err = (await resp.json()) as { error?: string };
+		throw new Error(`Push failed: ${err.error ?? resp.statusText}`);
+	}
 }
 
 /**
@@ -85,10 +90,10 @@ export async function pushToBundle(
  * ここでは単に長さチェックのみ行う。
  */
 export function validateRoomKeyFormat(roomKey: string): boolean {
-    try {
-        const bytes = fromBase64Url(roomKey);
-        return bytes.length >= 50; // 最低限のサイズ
-    } catch {
-        return false;
-    }
+	try {
+		const bytes = fromBase64Url(roomKey);
+		return bytes.length >= 50; // 最低限のサイズ
+	} catch {
+		return false;
+	}
 }

@@ -11,33 +11,33 @@
 import { dbGet, dbSet } from './index';
 
 export type StoredIdentity = {
-    privateKey: CryptoKey;            // extractable=false Ed25519 秘密鍵
-    publicKeyRaw: Uint8Array;         // 32-byte Ed25519 公開鍵
-    publicKeyB64: string;             // base64url エンコード
+	privateKey: CryptoKey; // extractable=false Ed25519 秘密鍵
+	publicKeyRaw: Uint8Array; // 32-byte Ed25519 公開鍵
+	publicKeyB64: string; // base64url エンコード
 };
 
 export type UserProfile = {
-    username: string;
+	username: string;
 };
 
 export async function loadIdentity(): Promise<StoredIdentity | null> {
-    const priv = await dbGet<CryptoKey>('identity', 'privateKey');
-    const pubRaw = await dbGet<Uint8Array>('identity', 'publicKeyRaw');
-    const pubB64 = await dbGet<string>('identity', 'publicKeyB64');
-    if (!priv || !pubRaw || !pubB64) return null;
-    return { privateKey: priv, publicKeyRaw: pubRaw, publicKeyB64: pubB64 };
+	const priv = await dbGet<CryptoKey>('identity', 'privateKey');
+	const pubRaw = await dbGet<Uint8Array>('identity', 'publicKeyRaw');
+	const pubB64 = await dbGet<string>('identity', 'publicKeyB64');
+	if (!priv || !pubRaw || !pubB64) return null;
+	return { privateKey: priv, publicKeyRaw: pubRaw, publicKeyB64: pubB64 };
 }
 
 export async function saveIdentity(identity: StoredIdentity): Promise<void> {
-    await dbSet('identity', 'privateKey', identity.privateKey);
-    await dbSet('identity', 'publicKeyRaw', identity.publicKeyRaw);
-    await dbSet('identity', 'publicKeyB64', identity.publicKeyB64);
+	await dbSet('identity', 'privateKey', identity.privateKey);
+	await dbSet('identity', 'publicKeyRaw', identity.publicKeyRaw);
+	await dbSet('identity', 'publicKeyB64', identity.publicKeyB64);
 }
 
 export async function loadProfile(): Promise<UserProfile | null> {
-    return dbGet<UserProfile>('identity', 'profile');
+	return (await dbGet<UserProfile>('identity', 'profile')) ?? null;
 }
 
 export async function saveProfile(profile: UserProfile): Promise<void> {
-    await dbSet('identity', 'profile', profile);
+	await dbSet('identity', 'profile', profile);
 }

@@ -45,7 +45,7 @@ const wasmPlugin: Plugin = {
 			const destructure = exportNames.map(n => `    ${n},`).join('\n');
 
 			// WASM バイナリを出力ディレクトリにコピー
-			const outdir = build.initialOptions.outdir ?? 'docs';
+			const outdir = build.initialOptions.outdir ?? 'public';
 			mkdirSync(outdir, { recursive: true });
 			copyFileSync(wasmPath, path.join(outdir, wasmFileName));
 
@@ -71,7 +71,7 @@ ${destructure}
 };
 
 // 成果物の出力先を確保
-mkdirSync('docs', { recursive: true });
+mkdirSync('public', { recursive: true });
 
 const commonOptions: BuildOptions = {
 	bundle: true,
@@ -84,7 +84,7 @@ const commonOptions: BuildOptions = {
 const appCtx = await esbuild.context({
 	...commonOptions,
 	entryPoints: ['src/main.tsx'],
-	outfile: 'docs/app.js',
+	outfile: 'public/app.js',
 	format: 'esm',
 	plugins: [wasmPlugin, cssPlugin],
 });
@@ -93,7 +93,7 @@ const appCtx = await esbuild.context({
 const swCtx = await esbuild.context({
 	...commonOptions,
 	entryPoints: ['src/serviceWorker.ts'],
-	outfile: 'docs/sw.js',
+	outfile: 'public/sw.js',
 	format: 'iife',
 	define: { 'process.env.NODE_ENV': watch ? '"development"' : '"production"' },
 	plugins: [cssPlugin],

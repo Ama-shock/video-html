@@ -13,17 +13,59 @@
  *
  * Secrets (wrangler secret put):
  *   VAPID_PRIVATE_KEY_D  — P-256 秘密鍵スカラー (base64url, 32 bytes)
- *   VAPID_PUBLIC_KEY     — P-256 非圧縮公開鍵 (base64url, 65 bytes)
- *   GATEWAY_KEY_ID       — 8 バイト鍵識別子 (base64url)
+ *
+ * 公開鍵・鍵IDは秘密鍵から自動導出:
+ *   VAPID_PUBLIC_KEY  — 非圧縮公開鍵 (65 bytes) … VAPID Authorization ヘッダ用
+ *   GATEWAY_KEY_ID    — 圧縮公開鍵 (33 bytes) … クレデンシャルバンドルの鍵識別子
  */
+
+import { decode_credential_bundle_wasm } from './non-resident-vapid';
 
 export interface Env {
     ALLOWED_ORIGIN: string;
     VAPID_SUBJECT: string;
     VAPID_PRIVATE_KEY_D: string;
-    VAPID_PUBLIC_KEY: string;
-    GATEWAY_KEY_ID: string;
-    KV: KVNamespace;
+}
+
+// ---------------------------------------------------------------------------
+// Public key derivation (cached per isolate)
+// ---------------------------------------------------------------------------
+
+let cachedKeys: { d: string; publicKey: string; gatewayKeyId: string } | null = null;
+
+async function getDerivedKeys(env: Env): Promise<{ publicKey: string; gatewayKeyId: string }> {
+    if (cachedKeys && cachedKeys.d === env.VAPID_PRIVATE_KEY_D) {
+        return cachedKeys;
+    }
+
+    const rawScalar = fromBase64Url(env.VAPID_PRIVATE_KEY_D);
+    const pkcs8 = buildP256Pkcs8(rawScalar);
+
+    // extractable: true で秘密鍵をインポートし、JWK から x, y を取得
+    const key = await crypto.subtle.importKey(
+        'pkcs8', pkcs8, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'],
+    );
+    const jwk = await crypto.subtle.exportKey('jwk', key) as JsonWebKey;
+    const x = fromBase64Url(jwk.x!);
+    const y = fromBase64Url(jwk.y!);
+
+    // 非圧縮公開鍵: 0x04 || x || y (65 bytes)
+    const uncompressed = new Uint8Array(65);
+    uncompressed[0] = 0x04;
+    uncompressed.set(x, 1);
+    uncompressed.set(y, 33);
+
+    // 圧縮公開鍵: (0x02 or 0x03) || x (33 bytes)
+    const compressed = new Uint8Array(33);
+    compressed[0] = (y[31] & 1) === 0 ? 0x02 : 0x03;
+    compressed.set(x, 1);
+
+    cachedKeys = {
+        d: env.VAPID_PRIVATE_KEY_D,
+        publicKey: toBase64Url(uncompressed),
+        gatewayKeyId: toBase64Url(compressed),
+    };
+    return cachedKeys;
 }
 
 // ---------------------------------------------------------------------------
@@ -46,17 +88,18 @@ export default {
         }
 
         const url = new URL(request.url);
+        const keys = await getDerivedKeys(env);
 
         if (request.method === 'GET' && url.pathname === '/vapid-public-key') {
-            return corsResponse(json({ publicKey: env.VAPID_PUBLIC_KEY }), 200, origin, allowedOrigin);
+            return corsResponse(json({ publicKey: keys.publicKey }), 200, origin, allowedOrigin);
         }
 
         if (request.method === 'GET' && url.pathname === '/gateway-key-id') {
-            return corsResponse(json({ keyId: env.GATEWAY_KEY_ID }), 200, origin, allowedOrigin);
+            return corsResponse(json({ keyId: keys.gatewayKeyId }), 200, origin, allowedOrigin);
         }
 
         if (request.method === 'POST' && url.pathname === '/push') {
-            return handlePush(request, env, origin, allowedOrigin);
+            return handlePush(request, env, keys, origin, allowedOrigin);
         }
 
         return corsResponse(json({ error: 'Not Found' }), 404, origin, allowedOrigin);
@@ -78,6 +121,7 @@ export default {
 async function handlePush(
     request: Request,
     env: Env,
+    keys: { publicKey: string; gatewayKeyId: string },
     origin: string,
     allowedOrigin: string,
 ): Promise<Response> {
@@ -95,11 +139,18 @@ async function handlePush(
     const ttl = Math.min(body.ttl ?? 60, 86400);
 
     try {
-        // バンドルを復号して WebPush サブスクリプション情報を取得
-        const subscription = await decodeBundle(body.bundle, env);
+        // WASM でバンドルを復号して WebPush サブスクリプション情報を取得
+        const decoded = decode_credential_bundle_wasm(
+            body.bundle, keys.gatewayKeyId, env.VAPID_PRIVATE_KEY_D,
+        );
+        const subscription: PushSubscription = {
+            endpoint: decoded.endpoint,
+            p256dh: decoded.p256dh,
+            auth: decoded.auth,
+        };
 
         // WebPush で送信
-        await sendWebPush(subscription, JSON.stringify(body.payload), ttl, env);
+        await sendWebPush(subscription, JSON.stringify(body.payload), ttl, env, keys.publicKey);
 
         return corsResponse(json({ ok: true }), 200, origin, allowedOrigin);
     } catch (err) {
@@ -119,109 +170,6 @@ interface PushSubscription {
     auth: string;   // base64url
 }
 
-async function decodeBundle(bundleB64url: string, env: Env): Promise<PushSubscription> {
-    const bundle = fromBase64Url(bundleB64url);
-
-    if (bundle.length < 9) throw new Error('Bundle too short');
-
-    const keyId = bundle.slice(0, 8);
-    const expectedKeyId = fromBase64Url(env.GATEWAY_KEY_ID);
-    if (!bytesEqual(keyId, expectedKeyId)) {
-        throw new Error('Key ID mismatch');
-    }
-
-    const ciphertext = bundle.slice(8);
-
-    // Import P-256 private key (PKCS8 or raw scalar)
-    const privateKeyBytes = fromBase64Url(env.VAPID_PRIVATE_KEY_D);
-    const privateKey = await importP256PrivateKey(privateKeyBytes);
-
-    // Decrypt using P-256 ECDH + AES-256-GCM (matches p256dhで復号 in Rust)
-    const plaintext = await p256Decrypt(ciphertext, privateKey);
-
-    // Parse plaintext credential (general format 0x01/0x00)
-    return parseCredential(plaintext);
-}
-
-async function p256Decrypt(ciphertext: Uint8Array, privateKey: CryptoKey): Promise<Uint8Array> {
-    if (ciphertext.length < 1) throw new Error('Ciphertext too short');
-
-    const ephPubKeyLen = ciphertext[0];
-    if (ciphertext.length < 1 + ephPubKeyLen + 12) throw new Error('Ciphertext header too short');
-
-    const ephPubKeyBytes = ciphertext.slice(1, 1 + ephPubKeyLen);
-    const nonce = ciphertext.slice(1 + ephPubKeyLen, 1 + ephPubKeyLen + 12);
-    const body = ciphertext.slice(1 + ephPubKeyLen + 12);
-
-    // Import ephemeral public key
-    const ephPubKey = await crypto.subtle.importKey(
-        'raw',
-        ephPubKeyBytes,
-        { name: 'ECDH', namedCurve: 'P-256' },
-        false,
-        [],
-    );
-
-    // ECDH → shared secret
-    const sharedBits = await crypto.subtle.deriveBits(
-        { name: 'ECDH', public: ephPubKey },
-        privateKey,
-        256,
-    );
-
-    // HKDF-SHA256 with info="credential-bundle", derive 32 bytes
-    const hkdfKey = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveBits']);
-    const aesKeyBytes = await crypto.subtle.deriveBits(
-        {
-            name: 'HKDF',
-            hash: 'SHA-256',
-            salt: new Uint8Array(0),
-            info: new TextEncoder().encode('credential-bundle'),
-        },
-        hkdfKey,
-        256,
-    );
-
-    // AES-256-GCM decrypt
-    const aesKey = await crypto.subtle.importKey('raw', aesKeyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, aesKey, body);
-
-    return new Uint8Array(plaintext);
-}
-
-function parseCredential(data: Uint8Array): PushSubscription {
-    if (data.length < 10) throw new Error('Credential data too short');
-
-    const typeCategory = data[0];
-    const minorVersion = data[1];
-    // Support general format (0x01 / 0x00) only for now
-    if (typeCategory !== 0x01 || minorVersion !== 0x00) {
-        throw new Error(`Unsupported credential type: 0x${typeCategory.toString(16)}/0x${minorVersion.toString(16)}`);
-    }
-
-    const dv = new DataView(data.buffer, data.byteOffset);
-
-    // Skip: type(2) + expiration_time_48(6) + nonce(2) = 10 bytes
-    let offset = 10;
-
-    // p256dh
-    const p256dhLen = dv.getUint16(offset, false); offset += 2;
-    const p256dh = data.slice(offset, offset + p256dhLen); offset += p256dhLen;
-
-    // auth
-    const authLen = dv.getUint16(offset, false); offset += 2;
-    const auth = data.slice(offset, offset + authLen); offset += authLen;
-
-    // endpoint
-    const endpointLen = dv.getUint16(offset, false); offset += 2;
-    const endpoint = new TextDecoder().decode(data.slice(offset, offset + endpointLen));
-
-    return {
-        endpoint,
-        p256dh: toBase64Url(p256dh),
-        auth: toBase64Url(auth),
-    };
-}
 
 // ---------------------------------------------------------------------------
 // WebPush (RFC 8030 + VAPID RFC 8292)
@@ -232,6 +180,7 @@ async function sendWebPush(
     payload: string,
     ttl: number,
     env: Env,
+    vapidPublicKey: string,
 ): Promise<void> {
     const endpointUrl = new URL(subscription.endpoint);
     const audience = `${endpointUrl.protocol}//${endpointUrl.host}`;
@@ -250,7 +199,7 @@ async function sendWebPush(
         'Content-Type': 'application/octet-stream',
         'Content-Encoding': 'aes128gcm',
         'TTL': String(ttl),
-        'Authorization': `vapid t=${vapidJwt}, k=${env.VAPID_PUBLIC_KEY}`,
+        'Authorization': `vapid t=${vapidJwt}, k=${vapidPublicKey}`,
         ...encHeaders,
     };
 
@@ -307,7 +256,8 @@ async function encryptPayload(
         ['deriveBits'],
     );
 
-    const ephPublicRaw = await crypto.subtle.exportKey('raw', ephKeyPair.publicKey);
+    const keyPair = ephKeyPair as CryptoKeyPair;
+    const ephPublicRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
 
     // Import recipient public key
     const recipientKey = await crypto.subtle.importKey(
@@ -320,8 +270,8 @@ async function encryptPayload(
 
     // ECDH
     const sharedBits = await crypto.subtle.deriveBits(
-        { name: 'ECDH', public: recipientKey },
-        ephKeyPair.privateKey,
+        { name: 'ECDH', $public: recipientKey },
+        keyPair.privateKey,
         256,
     );
 
@@ -332,7 +282,7 @@ async function encryptPayload(
     const { contentEncryptionKey, nonce } = await deriveRfc8291Keys(
         new Uint8Array(sharedBits),
         authSecret,
-        new Uint8Array(ephPublicRaw),
+        new Uint8Array(ephPublicRaw as ArrayBuffer),
         recipientPublicKey,
         salt,
     );
@@ -351,7 +301,7 @@ async function encryptPayload(
     // aes128gcm content-encoding header block
     // salt(16) + rs(4, BE) + idlen(1) + keyid(idlen)
     const rs = plaintext.length + 18; // record size
-    const keyId = new Uint8Array(ephPublicRaw);
+    const keyId = new Uint8Array(ephPublicRaw as ArrayBuffer);
     const header = new Uint8Array(21 + keyId.length);
     header.set(salt, 0);
     new DataView(header.buffer).setUint32(16, rs, false);
@@ -372,8 +322,6 @@ async function deriveRfc8291Keys(
 ): Promise<{ contentEncryptionKey: CryptoKey; nonce: Uint8Array }> {
     // PRK = HKDF-SHA256(auth_secret, ecdh_secret, "WebPush: info\0" || recipient || sender)
     const infoLabel = new TextEncoder().encode('WebPush: info\x00');
-    const prk = await hkdfExtract(authSecret, ecdhSecret);
-    const prkKey = await crypto.subtle.importKey('raw', prk, 'HKDF', false, ['deriveBits']);
     const info = concat(infoLabel, recipientPublic, senderPublic);
     const ikm = new Uint8Array(await crypto.subtle.deriveBits(
         { name: 'HKDF', hash: 'SHA-256', salt: authSecret, info },
@@ -395,12 +343,6 @@ async function deriveRfc8291Keys(
     return { contentEncryptionKey, nonce };
 }
 
-async function hkdfExtract(salt: Uint8Array, ikm: Uint8Array): Promise<Uint8Array> {
-    const saltKey = await crypto.subtle.importKey('raw', salt, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const prk = await crypto.subtle.sign('HMAC', saltKey, ikm);
-    return new Uint8Array(prk);
-}
-
 async function hkdfExpand(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
     const key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits(
@@ -414,19 +356,6 @@ async function hkdfExpand(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, l
 // ---------------------------------------------------------------------------
 // Key import helpers
 // ---------------------------------------------------------------------------
-
-async function importP256PrivateKey(rawScalar: Uint8Array): Promise<CryptoKey> {
-    // Build PKCS8 wrapper for P-256 private key
-    // (SEC1 / PKCS8 header for P-256)
-    const pkcs8 = buildP256Pkcs8(rawScalar);
-    return crypto.subtle.importKey(
-        'pkcs8',
-        pkcs8,
-        { name: 'ECDH', namedCurve: 'P-256' },
-        false,
-        ['deriveBits'],
-    );
-}
 
 async function importP256SigningKey(rawScalar: Uint8Array): Promise<CryptoKey> {
     const pkcs8 = buildP256Pkcs8(rawScalar);
@@ -533,9 +462,4 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
     let offset = 0;
     for (const a of arrays) { out.set(a, offset); offset += a.length; }
     return out;
-}
-
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-    if (a.length !== b.length) return false;
-    return a.every((v, i) => v === b[i]);
 }

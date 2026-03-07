@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"ignore": ["node_modules", "docs", "cf-worker/node_modules"]
+		"includes": ["src/**", "build.ts"]
 	},
 	"formatter": {
 		"enabled": true,
@@ -19,7 +19,8 @@
 		"rules": {
 			"recommended": true,
 			"suspicious": {
-				"noExplicitAny": "warn"
+				"noExplicitAny": "warn",
+				"noArrayIndexKey": "warn"
 			},
 			"style": {
 				"noNonNullAssertion": "warn"

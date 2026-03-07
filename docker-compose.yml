@@ -6,23 +6,25 @@ services:
       - "80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./docs:/srv/docs:ro
+      - ./public:/srv/public:ro
     depends_on:
       - gateway
 
   # クレデンシャルバンドルゲートウェイ (wrangler dev でローカル実行)
-  # cf-worker/.dev.vars.example をコピーして .dev.vars に鍵を設定してください。
+  # 初回起動時に VAPID 秘密鍵を自動生成し、ボリュームに永続化します。
   gateway:
     image: node:22-slim
     working_dir: /app
-    command: sh -c "npm ci && npx wrangler dev"
+    command: sh /app/entrypoint.sh
     volumes:
       - ./cf-worker:/app
       - gateway_modules:/app/node_modules
+      - gateway_data:/data
       - wrangler_cache:/root/.wrangler
     expose:
       - "3000"
 
 volumes:
   gateway_modules:
+  gateway_data:
   wrangler_cache:

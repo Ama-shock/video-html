@@ -3,23 +3,15 @@
 # wrangler dev が自動的に読み込みます。
 
 # P-256 秘密鍵スカラー (base64url, 32 bytes)
+# 公開鍵 (VAPID_PUBLIC_KEY) と鍵ID (GATEWAY_KEY_ID) は秘密鍵から自動導出されます。
 VAPID_PRIVATE_KEY_D=<秘密鍵をここに入力>
-
-# P-256 非圧縮公開鍵 (base64url, 65 bytes)
-VAPID_PUBLIC_KEY=<公開鍵をここに入力>
-
-# 8 バイト鍵識別子 (base64url)
-GATEWAY_KEY_ID=<鍵IDをここに入力>
 
 # 鍵の生成例 (Node.js):
 #   node -e "
-#     const { subtle, getRandomValues } = require('crypto').webcrypto;
-#     const pair = await subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
-#     const d = Buffer.from(await subtle.exportKey('pkcs8',pair.privateKey)).slice(-32);
-#     const pub = new Uint8Array(await subtle.exportKey('raw',pair.publicKey));
-#     const kid = Buffer.allocUnsafe(8); getRandomValues(kid);
-#     const b64 = b => b.toString('base64url');
-#     console.log('VAPID_PRIVATE_KEY_D=' + b64(d));
-#     console.log('VAPID_PUBLIC_KEY=' + b64(Buffer.from(pub)));
-#     console.log('GATEWAY_KEY_ID=' + b64(kid));
+#     const { subtle } = require('crypto').webcrypto;
+#     (async () => {
+#       const pair = await subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+#       const d = Buffer.from(await subtle.exportKey('pkcs8',pair.privateKey)).slice(-32);
+#       console.log('VAPID_PRIVATE_KEY_D=' + d.toString('base64url'));
+#     })();
 #   "
