@@ -16,3 +16,7 @@ public/main.css
 public/main.js.map
 public/main.css.map
 public/non_resident_vapid_bg.wasm
+
+# Playwright
+test-results/
+playwright-report/
