@@ -16,5 +16,5 @@
         }
     },
     "include": ["src/**/*"],
-    "exclude": ["node_modules", "cf-worker", "src/serviceWorker.ts"]
+    "exclude": ["node_modules", "cf-worker", "worker", "src/serviceWorker.ts"]
 }

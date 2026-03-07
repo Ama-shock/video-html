@@ -7,8 +7,8 @@
     "check": "biome check src",
     "lint": "biome lint src",
     "format": "biome format --write src",
-    "build:worker": "cd cf-worker && npm run build",
-    "deploy:worker": "cd cf-worker && npm run deploy",
+    "dev:worker": "wrangler dev",
+    "deploy": "wrangler deploy",
     "e2e": "playwright test",
     "e2e:docker": "docker compose --profile test up --exit-code-from e2e e2e"
   },
@@ -17,6 +17,8 @@
   "description": "Switch BT WebSocket video capture and controller relay",
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "@playwright/test": "^1.52.0",
     "@reduxjs/toolkit": "^2.11.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -25,8 +27,8 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-redux": "^9.2.0",
-    "@playwright/test": "^1.52.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^4.71.0"
   },
   "type": "module",
   "dependencies": {

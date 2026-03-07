@@ -6,7 +6,7 @@
 import { dbGet, dbSet } from './index';
 
 export type AppSettings = {
-	switchBtWsUrl: string; // デフォルト: "ws://localhost:8765"
+	switchBtWsPort: number; // デフォルト: 8765
 	videoDeviceId: string | null;
 	audioDeviceId: string | null;
 	videoWidth: number;
@@ -19,7 +19,7 @@ export type KeymapEntry = {
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
-	switchBtWsUrl: 'ws://localhost:8765',
+	switchBtWsPort: 8765,
 	videoDeviceId: null,
 	audioDeviceId: null,
 	videoWidth: 1920,

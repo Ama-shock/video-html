@@ -1,0 +1,22 @@
+name = "video-html"
+main = "worker/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 静的ファイル配信 (Workers Static Assets)
+# public/ のビルド成果物を配信。SPA フォールバック付き。
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+
+[vars]
+VAPID_SUBJECT = "mailto:admin@example.com"
+
+# Secrets (本番: wrangler secret put <NAME> / ローカル: .dev.vars に記載)
+# VAPID_PRIVATE_KEY_D   — P-256 秘密鍵スカラー (base64url, 32 bytes)
+# 公開鍵・鍵IDは秘密鍵から自動導出されます。
+
+[dev]
+port = 3000
+ip = "0.0.0.0"

@@ -24,7 +24,7 @@ export default function GamepadPanel() {
 	const dispatch = useDispatch<AppDispatch>();
 	const gamepads = useSelector((s: RootState) => s.gamepad.gamepads);
 	const keymap = useSelector((s: RootState) => s.gamepad.keymap);
-	const wsUrl = useSelector((s: RootState) => s.app.switchBtWsUrl);
+	const wsPort = useSelector((s: RootState) => s.app.switchBtWsPort);
 	const [tab, setTab] = useState<'gamepads' | 'keymap'>('gamepads');
 
 	// ゲームパッド接続状態の監視
@@ -63,10 +63,7 @@ export default function GamepadPanel() {
 			stopRelay(gpIndex);
 			dispatch(setRelayActive({ index: gpIndex, active: false, controllerId: null }));
 		} else {
-			const client = getClient(
-				wsUrl.replace('ws://', 'http://').replace('wss://', 'https://'),
-				controllerId,
-			);
+			const client = getClient(`ws://localhost:${wsPort}`, controllerId);
 			startRelay({ gamepadIndex: gpIndex, client, keymap });
 			dispatch(setRelayActive({ index: gpIndex, active: true, controllerId }));
 		}

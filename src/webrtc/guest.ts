@@ -25,10 +25,8 @@ export class GuestWebRTC {
 	private pc: RTCPeerConnection | null = null;
 	private dataChannel: RTCDataChannel | null = null;
 	private callbacks: GuestCallbacks;
-	private gatewayUrl: string;
 
-	constructor(gatewayUrl: string, callbacks: GuestCallbacks = {}) {
-		this.gatewayUrl = gatewayUrl;
+	constructor(callbacks: GuestCallbacks = {}) {
 		this.callbacks = callbacks;
 	}
 
@@ -86,7 +84,7 @@ export class GuestWebRTC {
 			offerSdp: pc.localDescription?.sdp ?? '',
 		};
 
-		await pushToBundle(roomKey, joinReq, this.gatewayUrl, 120);
+		await pushToBundle(roomKey, joinReq, 120);
 	}
 
 	/**

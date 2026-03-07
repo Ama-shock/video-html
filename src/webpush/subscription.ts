@@ -13,11 +13,9 @@ export type WebPushSubscriptionInfo = {
 };
 
 /**
- * GATEWAY_URL/vapid-public-key から VAPID 公開鍵を取得し、
- * WebPush サブスクリプションを作成して返す。
+ * VAPID 公開鍵を取得し、WebPush サブスクリプションを作成して返す（同一オリジン前提）。
  */
 export async function subscribeToPush(
-	gatewayUrl: string,
 	swRegistration: ServiceWorkerRegistration,
 ): Promise<WebPushSubscriptionInfo> {
 	// まず既存のサブスクリプションを確認
@@ -25,7 +23,7 @@ export async function subscribeToPush(
 
 	if (!sub) {
 		// VAPID 公開鍵を取得
-		const resp = await fetch(`${gatewayUrl}/vapid-public-key`);
+		const resp = await fetch('/vapid-public-key');
 		if (!resp.ok) throw new Error(`Failed to fetch VAPID public key: ${resp.status}`);
 		const { publicKey } = (await resp.json()) as { publicKey: string };
 

@@ -20,10 +20,8 @@ type Controller = {
 };
 
 export default function ControllerList() {
-	const wsBaseUrl = useSelector((s: RootState) =>
-		s.app.switchBtWsUrl.replace('ws://', 'http://').replace('wss://', 'https://'),
-	);
-	const apiBase = wsBaseUrl.replace(/\/ws.*$/, '');
+	const wsPort = useSelector((s: RootState) => s.app.switchBtWsPort);
+	const apiBase = `http://localhost:${wsPort}`;
 
 	const [controllers, setControllers] = useState<Controller[]>([]);
 	const [devices, setDevices] = useState<BtDevice[]>([]);

@@ -25,7 +25,6 @@ export default function GuestPanel() {
 	const hostStream = useSelector((s: RootState) => s.guest.hostStream);
 	const controllerId = useSelector((s: RootState) => s.guest.controllerId);
 	const error = useSelector((s: RootState) => s.guest.error);
-	const gatewayUrl = useSelector((s: RootState) => s.app.gatewayUrl);
 	const username = useSelector((s: RootState) => s.identity.username);
 
 	const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,13 +55,13 @@ export default function GuestPanel() {
 			const swReg = await navigator.serviceWorker.getRegistration();
 			if (!swReg) throw new Error('Service worker が登録されていません');
 
-			const gateway = await fetchGatewayInfo(gatewayUrl);
-			const sub = await subscribeToPush(gatewayUrl, swReg);
+			const gateway = await fetchGatewayInfo();
+			const sub = await subscribeToPush(swReg);
 			const guestBundle = await createRoomKey(sub, gateway, 3600); // 1時間有効
 
 			const identity = await getOrCreateIdentity();
 
-			const rtc = new GuestWebRTC(gatewayUrl, {
+			const rtc = new GuestWebRTC({
 				onRemoteStream: (stream) => {
 					dispatch(setHostStream(true));
 					if (videoRef.current) {

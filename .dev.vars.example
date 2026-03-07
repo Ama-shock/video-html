@@ -1,0 +1,17 @@
+# ローカル開発用シークレット
+# このファイルを .dev.vars にコピーして各値を設定してください。
+# wrangler dev が自動的に読み込みます。
+
+# P-256 秘密鍵スカラー (base64url, 32 bytes)
+# 公開鍵 (VAPID_PUBLIC_KEY) と鍵ID (GATEWAY_KEY_ID) は秘密鍵から自動導出されます。
+VAPID_PRIVATE_KEY_D=<秘密鍵をここに入力>
+
+# 鍵の生成例 (Node.js):
+#   node -e "
+#     const { subtle } = require('crypto').webcrypto;
+#     (async () => {
+#       const pair = await subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+#       const d = Buffer.from(await subtle.exportKey('pkcs8',pair.privateKey)).slice(-32);
+#       console.log('VAPID_PRIVATE_KEY_D=' + d.toString('base64url'));
+#     })();
+#   "

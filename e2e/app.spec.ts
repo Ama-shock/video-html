@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('App', () => {
 	test('index.html is served and loads React app', async ({ page }) => {
-		const response = await page.goto('/');
+		const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
 		expect(response?.status()).toBe(200);
 		expect(response?.headers()['content-type']).toContain('text/html');
 
@@ -13,29 +13,26 @@ test.describe('App', () => {
 	});
 
 	test('React app renders #root content', async ({ page }) => {
-		await page.goto('/');
+		await page.goto('/', { waitUntil: 'domcontentloaded' });
 		// React が #root にマウントされるまで待つ (splash or ProfileSetup or Layout)
 		await expect(page.locator('#root')).not.toBeEmpty();
 	});
 
 	test('splash screen appears then resolves', async ({ page }) => {
-		await page.goto('/');
-		// 初期化中は「読み込み中...」が表示される
+		await page.goto('/', { waitUntil: 'domcontentloaded' });
 		const root = page.locator('#root');
-		// React がマウントされたら何らかのコンテンツが表示される
 		await expect(root).not.toBeEmpty({ timeout: 10_000 });
 	});
 
 	test('VAPID public key endpoint returns key', async ({ page }) => {
 		const response = await page.request.get('/vapid-public-key');
-		// gateway が起動していれば 200、CORS で弾かれれば 403
-		// Origin ヘッダなしの直アクセスなので 403 が期待される
-		expect([200, 403]).toContain(response.status());
+		// Origin ヘッダなしの直アクセスなので 403 (same-origin check)
+		expect(response.status()).toBe(403);
 	});
 
 	test('gateway-key-id endpoint responds', async ({ page }) => {
 		const response = await page.request.get('/gateway-key-id');
-		expect([200, 403]).toContain(response.status());
+		expect(response.status()).toBe(403);
 	});
 
 	test('service worker script is served', async ({ page }) => {
@@ -51,7 +48,7 @@ test.describe('App', () => {
 	});
 
 	test('SPA fallback serves index.html for unknown routes', async ({ page }) => {
-		const response = await page.goto('/some/unknown/route');
+		const response = await page.goto('/some/unknown/route', { waitUntil: 'domcontentloaded' });
 		expect(response?.status()).toBe(200);
 		expect(response?.headers()['content-type']).toContain('text/html');
 		await expect(page.locator('#root')).toBeAttached();
@@ -61,7 +58,7 @@ test.describe('App', () => {
 		const errors: string[] = [];
 		page.on('pageerror', (err) => errors.push(err.message));
 
-		await page.goto('/');
+		await page.goto('/', { waitUntil: 'domcontentloaded' });
 		await page.waitForTimeout(3000);
 
 		// WASM や JS のロードエラーが無いことを確認

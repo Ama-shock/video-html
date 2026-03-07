@@ -26,7 +26,6 @@ export default function HostPanel() {
 	const roomKey = useSelector((s: RootState) => s.host.roomKey);
 	const guests = useSelector((s: RootState) => s.host.guests);
 	const pendingRequests = useSelector((s: RootState) => s.host.pendingRequests);
-	const gatewayUrl = useSelector((s: RootState) => s.app.gatewayUrl);
 	const _publicKeyB64 = useSelector((s: RootState) => s.identity.publicKeyB64);
 
 	const [validHours, setValidHours] = useState(12);
@@ -79,15 +78,15 @@ export default function HostPanel() {
 			const swReg = await navigator.serviceWorker.getRegistration();
 			if (!swReg) throw new Error('Service worker が登録されていません');
 
-			const gateway = await fetchGatewayInfo(gatewayUrl);
-			const sub = await subscribeToPush(gatewayUrl, swReg);
+			const gateway = await fetchGatewayInfo();
+			const sub = await subscribeToPush(swReg);
 			const expirationSec = Math.floor(Date.now() / 1000) + validHours * 3600;
 			const key = await createRoomKey(sub, gateway, validHours * 3600);
 
 			dispatch(openRoom({ roomKey: key, expiresAt: expirationSec }));
 
 			// WebRTC ホスト初期化
-			hostRtcRef.current = new HostWebRTC(gatewayUrl, {
+			hostRtcRef.current = new HostWebRTC({
 				onGuestStateChange: (userId, state) => {
 					dispatch(updateGuestConnection({ userId, connectionState: state }));
 				},

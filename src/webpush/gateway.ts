@@ -13,18 +13,17 @@ import {
 import type { WebPushSubscriptionInfo } from './subscription';
 
 export type GatewayInfo = {
-	url: string;
 	publicKey: string; // base64url P-256 公開鍵
 	keyId: string; // base64url 8-byte key ID
 };
 
 /**
- * ゲートウェイから公開鍵と鍵 ID を取得する。
+ * ゲートウェイから公開鍵と鍵 ID を取得する（同一オリジン前提）。
  */
-export async function fetchGatewayInfo(gatewayUrl: string): Promise<GatewayInfo> {
+export async function fetchGatewayInfo(): Promise<GatewayInfo> {
 	const [pkResp, kidResp] = await Promise.all([
-		fetch(`${gatewayUrl}/vapid-public-key`),
-		fetch(`${gatewayUrl}/gateway-key-id`),
+		fetch('/vapid-public-key'),
+		fetch('/gateway-key-id'),
 	]);
 
 	if (!pkResp.ok || !kidResp.ok) throw new Error('Failed to fetch gateway info');
@@ -32,7 +31,7 @@ export async function fetchGatewayInfo(gatewayUrl: string): Promise<GatewayInfo>
 	const { publicKey } = (await pkResp.json()) as { publicKey: string };
 	const { keyId } = (await kidResp.json()) as { keyId: string };
 
-	return { url: gatewayUrl, publicKey, keyId };
+	return { publicKey, keyId };
 }
 
 /**
@@ -60,20 +59,18 @@ export async function createRoomKey(
 }
 
 /**
- * クレデンシャルバンドル宛てにペイロードをプッシュする。
+ * クレデンシャルバンドル宛てにペイロードをプッシュする（同一オリジン前提）。
  *
  * @param destBundle  宛先クレデンシャルバンドル (base64url)
  * @param payload  送信するオブジェクト
- * @param gatewayUrl  ゲートウェイ URL
  * @param ttl  TTL 秒 (デフォルト 60)
  */
 export async function pushToBundle(
 	destBundle: string,
 	payload: unknown,
-	gatewayUrl: string,
 	ttl = 60,
 ): Promise<void> {
-	const resp = await fetch(`${gatewayUrl}/push`, {
+	const resp = await fetch('/push', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ bundle: destBundle, payload, ttl }),

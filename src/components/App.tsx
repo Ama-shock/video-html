@@ -8,7 +8,7 @@ import {
 	setAudioDevice,
 	setInitialized,
 	setMode,
-	setSwitchBtWsUrl,
+	setSwitchBtWsPort,
 	setVideoDevice,
 } from '../store/appSlice';
 import { setKeymap } from '../store/gamepadSlice';
@@ -33,7 +33,7 @@ export default function App() {
 			dispatch(
 				setIdentity({ publicKeyB64: identity.publicKeyB64, username: profile?.username ?? '' }),
 			);
-			dispatch(setSwitchBtWsUrl(settings.switchBtWsUrl));
+			dispatch(setSwitchBtWsPort(settings.switchBtWsPort));
 			dispatch(setVideoDevice(settings.videoDeviceId));
 			dispatch(setAudioDevice(settings.audioDeviceId));
 			dispatch(setKeymap(keymap));

@@ -1,9 +1,7 @@
 
 node_modules
-cf-worker/node_modules
-cf-worker/.wrangler
-cf-worker/.dev.vars
 .wrangler
+.dev.vars
 .keys
 
 # ビルド成果物

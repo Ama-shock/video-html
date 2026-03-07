@@ -1,38 +1,24 @@
 services:
-  # フロントエンドビルド (init container: 完了したら終了)
-  build:
+  # Worker + Static Assets (wrangler dev でローカル実行)
+  # フロントエンドビルド → 静的ファイル配信 + API を単一サービスで提供。
+  # 初回起動時に VAPID 秘密鍵を自動生成し、ボリュームに永続化。
+  app:
     image: node:22-slim
     working_dir: /app
-    command: sh -c "npm ci && node build.ts"
+    command: sh entrypoint.sh
+    ports:
+      - "${HOST_PORT:-3000}:3000"
     volumes:
       - .:/app
-      - build_modules:/app/node_modules
-
-  # 静的ファイルサーバー + API プロキシ
-  caddy:
-    image: caddy:alpine
-    ports:
-      - "${HOST_PORT:-80}:80"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./public:/srv/public:ro
-    depends_on:
-      build:
-        condition: service_completed_successfully
-
-  # クレデンシャルバンドルゲートウェイ (wrangler dev でローカル実行)
-  # 初回起動時に VAPID 秘密鍵を自動生成し、ボリュームに永続化します。
-  gateway:
-    image: node:22-slim
-    working_dir: /app
-    command: sh /app/entrypoint.sh
-    volumes:
-      - ./cf-worker:/app
-      - gateway_modules:/app/node_modules
-      - gateway_data:/data
+      - app_modules:/app/node_modules
+      - app_data:/data
       - wrangler_cache:/root/.wrangler
-    expose:
-      - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
 
   # E2E テスト (ヘッドレス Chromium)
   e2e:
@@ -45,18 +31,15 @@ services:
       - .:/app
       - e2e_modules:/app/node_modules
     depends_on:
-      caddy:
-        condition: service_started
-      gateway:
-        condition: service_started
+      app:
+        condition: service_healthy
     environment:
-      - BASE_URL=http://caddy
+      - BASE_URL=http://app:3000
     profiles:
       - test
 
 volumes:
-  build_modules:
-  gateway_modules:
-  gateway_data:
+  app_modules:
+  app_data:
   wrangler_cache:
   e2e_modules:

@@ -30,11 +30,9 @@ type HostCallbacks = {
 export class HostWebRTC {
 	private sessions = new Map<string, GuestSession>();
 	private localStream: MediaStream | null = null;
-	private gatewayUrl: string;
 	private callbacks: HostCallbacks;
 
-	constructor(gatewayUrl: string, callbacks: HostCallbacks = {}) {
-		this.gatewayUrl = gatewayUrl;
+	constructor(callbacks: HostCallbacks = {}) {
 		this.callbacks = callbacks;
 	}
 
@@ -120,12 +118,12 @@ export class HostWebRTC {
 			controllerAssignment: null,
 		};
 
-		await pushToBundle(guestBundle, answerMsg, this.gatewayUrl, 60);
+		await pushToBundle(guestBundle, answerMsg, 60);
 	}
 
 	async rejectGuest(guestBundle: string, reason?: string): Promise<void> {
 		const msg: JoinRejected = { type: 'join_rejected', reason };
-		await pushToBundle(guestBundle, msg, this.gatewayUrl, 60);
+		await pushToBundle(guestBundle, msg, 60);
 	}
 
 	disconnectGuest(userId: string): void {

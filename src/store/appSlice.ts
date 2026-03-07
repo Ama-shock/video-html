@@ -10,8 +10,7 @@ type AppState = {
 	audioDeviceId: string | null;
 	videoWidth: number;
 	videoHeight: number;
-	switchBtWsUrl: string;
-	gatewayUrl: string;
+	switchBtWsPort: number;
 	initialized: boolean;
 };
 
@@ -22,8 +21,7 @@ const initialState: AppState = {
 	audioDeviceId: null,
 	videoWidth: 1920,
 	videoHeight: 1080,
-	switchBtWsUrl: 'ws://localhost:8765',
-	gatewayUrl: '',
+	switchBtWsPort: 8765,
 	initialized: false,
 };
 
@@ -47,11 +45,8 @@ const appSlice = createSlice({
 			state.videoWidth = action.payload.width;
 			state.videoHeight = action.payload.height;
 		},
-		setSwitchBtWsUrl(state, action: PayloadAction<string>) {
-			state.switchBtWsUrl = action.payload;
-		},
-		setGatewayUrl(state, action: PayloadAction<string>) {
-			state.gatewayUrl = action.payload;
+		setSwitchBtWsPort(state, action: PayloadAction<number>) {
+			state.switchBtWsPort = action.payload;
 		},
 		setInitialized(state) {
 			state.initialized = true;
@@ -65,8 +60,7 @@ export const {
 	setVideoDevice,
 	setAudioDevice,
 	setResolution,
-	setSwitchBtWsUrl,
-	setGatewayUrl,
+	setSwitchBtWsPort,
 	setInitialized,
 } = appSlice.actions;
 
