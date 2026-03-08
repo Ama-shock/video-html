@@ -22,6 +22,11 @@ export type JoinAccepted = {
 	type: 'join_accepted';
 	answerSdp: string;
 	controllerAssignment: number | null; // switch-bt-ws コントローラー ID
+	videoQuality?: string; // 'high' | 'medium' | 'low'
+	hostProfile?: {
+		userId: string; // ホストの Ed25519 公開鍵 base64url
+		username: string;
+	};
 };
 
 /** ホスト → ゲスト: 入室拒否 */
@@ -37,9 +42,17 @@ export type HostDisconnect = {
 
 export type SignalingMessage = JoinRequest | JoinAccepted | JoinRejected | HostDisconnect;
 
-/** WebRTC データチャネル経由のコントローラー入力 */
+/** WebRTC データチャネル経由のコントローラー入力 (ゲスト → ホスト) */
 export type ControllerInput = {
 	type: 'controller_input';
 	buttons: boolean[];
 	axes: number[];
+};
+
+/** WebRTC データチャネル経由のホストコマンド (ホスト → ゲスト) */
+export type HostCommand = QualityChangeCommand;
+
+export type QualityChangeCommand = {
+	type: 'quality_change';
+	videoQuality: string; // 'high' | 'medium' | 'low'
 };

@@ -39,10 +39,20 @@ export default function App() {
 			dispatch(setKeymap(keymap));
 			dispatch(setInitialized());
 
-			// URL hash に room= が含まれる場合はゲストモード
+			// URL hash に room= が含まれる場合はゲストモード（hash は GuestMenu 側で消す）
 			const hash = new URLSearchParams(window.location.hash.slice(1));
 			if (hash.get('room')) dispatch(setMode('guest'));
 		})();
+	}, [dispatch]);
+
+	// hashchange でも room= があればゲストモードに切替
+	useEffect(() => {
+		const onHashChange = () => {
+			const hash = new URLSearchParams(window.location.hash.slice(1));
+			if (hash.get('room')) dispatch(setMode('guest'));
+		};
+		window.addEventListener('hashchange', onHashChange);
+		return () => window.removeEventListener('hashchange', onHashChange);
 	}, [dispatch]);
 
 	if (!initialized) {

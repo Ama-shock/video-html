@@ -9,22 +9,24 @@
 import type { StoredIdentity } from '../identity';
 import { signMessage } from '../identity';
 import { pushToBundle } from '../webpush/gateway';
+import { type ConnectionStats, getConnectionStats } from './stats';
 import type { ControllerInput, JoinAccepted, JoinRequest } from './types';
 
 const RTC_CONFIG: RTCConfiguration = {
 	iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
 };
 
-type GuestCallbacks = {
+export type GuestCallbacks = {
 	onRemoteStream?: (stream: MediaStream) => void;
 	onConnectionState?: (state: RTCPeerConnectionState) => void;
 	onControllerAssignment?: (controllerId: number | null) => void;
+	onHostCommand?: (cmd: { type: string; [key: string]: unknown }) => void;
 };
 
 export class GuestWebRTC {
 	private pc: RTCPeerConnection | null = null;
 	private dataChannel: RTCDataChannel | null = null;
-	private callbacks: GuestCallbacks;
+	callbacks: GuestCallbacks;
 
 	constructor(callbacks: GuestCallbacks = {}) {
 		this.callbacks = callbacks;
@@ -46,6 +48,8 @@ export class GuestWebRTC {
 		this.pc = pc;
 
 		pc.onconnectionstatechange = () => {
+			// close() 済みなら無視（再入防止）
+			if (!this.pc) return;
 			this.callbacks.onConnectionState?.(pc.connectionState);
 			if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
 				this.close();
@@ -55,6 +59,27 @@ export class GuestWebRTC {
 		pc.ontrack = (ev) => {
 			if (ev.streams[0]) {
 				this.callbacks.onRemoteStream?.(ev.streams[0]);
+			}
+		};
+
+		// ホストが作成したデータチャネルを受信 (host_command)
+		pc.ondatachannel = (ev) => {
+			const dc = ev.channel;
+			if (dc.label === 'host_command') {
+				dc.onmessage = (msgEv) => {
+					try {
+						const cmd = JSON.parse(msgEv.data as string);
+						if (cmd.type === 'host_disconnect') {
+							// コールバックを先に発火してから切断
+							this.callbacks.onConnectionState?.('closed');
+							this.close();
+							return;
+						}
+						this.callbacks.onHostCommand?.(cmd);
+					} catch {
+						/* ignore */
+					}
+				};
 			}
 		};
 
@@ -106,10 +131,26 @@ export class GuestWebRTC {
 	}
 
 	close(): void {
-		this.dataChannel?.close();
-		this.pc?.close();
-		this.dataChannel = null;
+		const pc = this.pc;
+		const dc = this.dataChannel;
+		// 先に null にして onconnectionstatechange からの再入を防ぐ
 		this.pc = null;
+		this.dataChannel = null;
+		// 切断通知をデータチャネルで送信（ホスト側の即時検知用）
+		if (dc?.readyState === 'open') {
+			try {
+				dc.send(JSON.stringify({ type: 'guest_disconnect' }));
+			} catch {
+				/* ignore */
+			}
+		}
+		dc?.close();
+		pc?.close();
+	}
+
+	async getStats(): Promise<ConnectionStats | null> {
+		if (!this.pc) return null;
+		return getConnectionStats(this.pc);
 	}
 
 	get isConnected(): boolean {

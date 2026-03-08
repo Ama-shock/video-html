@@ -1,11 +1,20 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
+export type VideoQuality = 'high' | 'medium' | 'low';
+
+export const VIDEO_QUALITY_LABELS: Record<VideoQuality, string> = {
+	high: '高画質 (1080p)',
+	medium: '標準 (720p)',
+	low: '低画質 (480p)',
+};
+
 export type GuestStatus = {
 	userId: string;
 	username: string;
 	connectionState: RTCPeerConnectionState;
 	allowed: boolean;
 	controllerId: number | null;
+	videoQuality: VideoQuality;
 };
 
 export type RoomStatus = 'closed' | 'open';
@@ -43,6 +52,8 @@ const hostSlice = createSlice({
 			state.pendingRequests = [];
 		},
 		addPendingGuest(state, action: PayloadAction<GuestStatus>) {
+			// 再接続の場合、既存の guests エントリを除去
+			state.guests = state.guests.filter((g) => g.userId !== action.payload.userId);
 			const idx = state.pendingRequests.findIndex((g) => g.userId === action.payload.userId);
 			if (idx >= 0) state.pendingRequests[idx] = action.payload;
 			else state.pendingRequests.push(action.payload);
@@ -53,10 +64,13 @@ const hostSlice = createSlice({
 				state.pendingRequests = state.pendingRequests.filter(
 					(g) => g.userId !== action.payload.userId,
 				);
+				// 同一ユーザーの既存エントリを除去して重複防止
+				state.guests = state.guests.filter((g) => g.userId !== action.payload.userId);
 				const guest: GuestStatus = {
 					...pending,
 					allowed: true,
 					controllerId: action.payload.controllerId,
+					videoQuality: pending.videoQuality ?? 'high',
 				};
 				state.guests.push(guest);
 			}
@@ -81,6 +95,13 @@ const hostSlice = createSlice({
 			const guest = state.guests.find((g) => g.userId === action.payload.userId);
 			if (guest) guest.controllerId = action.payload.controllerId;
 		},
+		setGuestVideoQuality(
+			state,
+			action: PayloadAction<{ userId: string; videoQuality: VideoQuality }>,
+		) {
+			const guest = state.guests.find((g) => g.userId === action.payload.userId);
+			if (guest) guest.videoQuality = action.payload.videoQuality;
+		},
 	},
 });
 
@@ -93,5 +114,6 @@ export const {
 	removeGuest,
 	updateGuestConnection,
 	setGuestController,
+	setGuestVideoQuality,
 } = hostSlice.actions;
 export default hostSlice.reducer;

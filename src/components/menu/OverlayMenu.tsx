@@ -9,7 +9,6 @@ import IdentityMenu from './IdentityMenu';
 import VideoMenu from './VideoMenu';
 
 const MODE_LABELS: Record<AppMode, string> = {
-	standalone: 'スタンドアロン',
 	host: 'ホスト',
 	guest: 'ゲスト',
 };
@@ -17,11 +16,6 @@ const MODE_LABELS: Record<AppMode, string> = {
 type SectionDef = { key: MenuSection; label: string };
 
 const SECTIONS_BY_MODE: Record<AppMode, SectionDef[]> = {
-	standalone: [
-		{ key: 'video', label: '映像' },
-		{ key: 'gamepad', label: 'ゲームパッド' },
-		{ key: 'identity', label: 'プロフィール' },
-	],
 	host: [
 		{ key: 'video', label: '映像' },
 		{ key: 'host', label: 'ホスト管理' },
@@ -29,6 +23,7 @@ const SECTIONS_BY_MODE: Record<AppMode, SectionDef[]> = {
 		{ key: 'identity', label: 'プロフィール' },
 	],
 	guest: [
+		{ key: 'video', label: '映像' },
 		{ key: 'guest', label: 'ゲスト接続' },
 		{ key: 'gamepad', label: 'ゲームパッド' },
 		{ key: 'identity', label: 'プロフィール' },
@@ -79,7 +74,7 @@ export default function OverlayMenu() {
 
 				{/* Mode switcher */}
 				<div className="menu-mode-switcher">
-					{(['standalone', 'host', 'guest'] as AppMode[]).map((m) => (
+					{(['host', 'guest'] as AppMode[]).map((m) => (
 						<button
 							type="button"
 							key={m}

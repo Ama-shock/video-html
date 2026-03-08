@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { generateIdenticonDataUrl } from '../../identity/identicon';
-import type { GuestStatus } from '../../store/hostSlice';
+import { VIDEO_QUALITY_LABELS, type GuestStatus, type VideoQuality } from '../../store/hostSlice';
+import type { ConnectionStats } from '../../webrtc/stats';
 
 type Props = {
 	pending: GuestStatus[];
@@ -8,6 +9,8 @@ type Props = {
 	onAllow: (userId: string) => void;
 	onReject: (userId: string) => void;
 	onRemove: (userId: string) => void;
+	onQualityChange: (userId: string, quality: VideoQuality) => void;
+	getGuestStats?: (userId: string) => Promise<ConnectionStats | null>;
 };
 
 function GuestCard({
@@ -16,18 +19,38 @@ function GuestCard({
 	onAllow,
 	onReject,
 	onRemove,
+	onQualityChange,
+	getStats,
 }: {
 	guest: GuestStatus;
 	isPending: boolean;
 	onAllow?: () => void;
 	onReject?: () => void;
 	onRemove?: () => void;
+	onQualityChange?: (quality: VideoQuality) => void;
+	getStats?: () => Promise<ConnectionStats | null>;
 }) {
 	const [identiconUrl, setIdenticonUrl] = useState<string | null>(null);
+	const [rttMs, setRttMs] = useState<number | null>(null);
 
 	useEffect(() => {
 		generateIdenticonDataUrl(guest.userId).then(setIdenticonUrl);
 	}, [guest.userId]);
+
+	// 接続済みゲストの RTT を定期取得
+	useEffect(() => {
+		if (isPending || guest.connectionState !== 'connected' || !getStats) {
+			setRttMs(null);
+			return;
+		}
+		const poll = async () => {
+			const stats = await getStats();
+			setRttMs(stats?.rttMs ?? null);
+		};
+		poll();
+		const id = setInterval(poll, 2000);
+		return () => clearInterval(id);
+	}, [isPending, guest.connectionState, getStats]);
 
 	const stateColor =
 		{
@@ -50,6 +73,7 @@ function GuestCard({
 				{!isPending && (
 					<span className="guest-state" style={{ color: stateColor }}>
 						● {guest.connectionState}
+						{rttMs !== null && <span className="rtt-badge">{rttMs} ms</span>}
 					</span>
 				)}
 			</div>
@@ -69,9 +93,20 @@ function GuestCard({
 						</button>
 					</>
 				) : (
-					<button type="button" className="btn btn-danger btn-sm" onClick={onRemove}>
-						切断
-					</button>
+					<>
+						<select
+							className="quality-select"
+							value={guest.videoQuality}
+							onChange={(e) => onQualityChange?.(e.target.value as VideoQuality)}
+						>
+							{(Object.keys(VIDEO_QUALITY_LABELS) as VideoQuality[]).map((q) => (
+								<option key={q} value={q}>{VIDEO_QUALITY_LABELS[q]}</option>
+							))}
+						</select>
+						<button type="button" className="btn btn-danger btn-sm" onClick={onRemove}>
+							切断
+						</button>
+					</>
 				)}
 			</div>
 		</div>
@@ -84,6 +119,8 @@ export default function GuestList({
 	onAllow,
 	onReject,
 	onRemove,
+	onQualityChange,
+	getGuestStats,
 }: Props) {
 	return (
 		<div className="guest-list">
@@ -111,6 +148,8 @@ export default function GuestList({
 							guest={g}
 							isPending={false}
 							onRemove={() => onRemove(g.userId)}
+							onQualityChange={(q) => onQualityChange(g.userId, q)}
+							getStats={getGuestStats ? () => getGuestStats(g.userId) : undefined}
 						/>
 					))}
 				</section>

@@ -8,11 +8,18 @@ export type GuestConnectionStatus =
 	| 'rejected'
 	| 'error';
 
+export type HostProfile = {
+	userId: string; // ホストの Ed25519 公開鍵 base64url
+	username: string;
+};
+
 type GuestState = {
 	status: GuestConnectionStatus;
 	roomKey: string; // 入力した部屋鍵
 	hostStream: boolean; // ホストの映像を受信中か
 	controllerId: number | null; // ホストから割り当てられたコントローラー ID
+	hostProfile: HostProfile | null; // 接続先ホストの情報
+	videoQuality: string | null; // ホストから通知された受信映像品質
 	error: string | null;
 };
 
@@ -21,6 +28,8 @@ const initialState: GuestState = {
 	roomKey: '',
 	hostStream: false,
 	controllerId: null,
+	hostProfile: null,
+	videoQuality: null,
 	error: null,
 };
 
@@ -41,6 +50,12 @@ const guestSlice = createSlice({
 		setControllerAssignment(state, action: PayloadAction<number | null>) {
 			state.controllerId = action.payload;
 		},
+		setHostProfile(state, action: PayloadAction<HostProfile | null>) {
+			state.hostProfile = action.payload;
+		},
+		setVideoQuality(state, action: PayloadAction<string | null>) {
+			state.videoQuality = action.payload;
+		},
 		setError(state, action: PayloadAction<string>) {
 			state.status = 'error';
 			state.error = action.payload;
@@ -49,11 +64,13 @@ const guestSlice = createSlice({
 			state.status = 'idle';
 			state.hostStream = false;
 			state.controllerId = null;
+			state.hostProfile = null;
+			state.videoQuality = null;
 			state.error = null;
 		},
 	},
 });
 
-export const { setRoomKey, setStatus, setHostStream, setControllerAssignment, setError, reset } =
+export const { setRoomKey, setStatus, setHostStream, setControllerAssignment, setHostProfile, setVideoQuality, setError, reset } =
 	guestSlice.actions;
 export default guestSlice.reducer;

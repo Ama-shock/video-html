@@ -6,6 +6,11 @@
 
 set -e
 
+# workerd が FCM/Mozilla へ HTTPS 接続するために CA 証明書が必要
+if ! command -v update-ca-certificates >/dev/null 2>&1; then
+  apt-get update -qq && apt-get install -y -qq ca-certificates curl >/dev/null 2>&1
+fi
+
 KEY_FILE="/data/vapid-private-key-d.txt"
 
 # 秘密鍵が無ければ生成

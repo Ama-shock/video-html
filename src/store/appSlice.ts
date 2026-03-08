@@ -1,6 +1,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
-export type AppMode = 'standalone' | 'host' | 'guest';
+export type AppMode = 'host' | 'guest';
 export type MenuSection = 'video' | 'host' | 'guest' | 'gamepad' | 'identity';
 
 type AppState = {
@@ -16,8 +16,8 @@ type AppState = {
 };
 
 const initialState: AppState = {
-	mode: 'standalone',
-	menuOpen: false,
+	mode: 'host',
+	menuOpen: true,
 	menuSection: 'video',
 	videoDeviceId: null,
 	audioDeviceId: null,
@@ -33,6 +33,8 @@ const appSlice = createSlice({
 	reducers: {
 		setMode(state, action: PayloadAction<AppMode>) {
 			state.mode = action.payload;
+			// モード切替時にデフォルトのセクションを設定
+			state.menuSection = action.payload === 'guest' ? 'guest' : 'video';
 		},
 		setMenuOpen(state, action: PayloadAction<boolean>) {
 			state.menuOpen = action.payload;

@@ -200,9 +200,12 @@ async function handlePush(
         });
 
         // WASM でバンドルを復号して WebPush サブスクリプション情報を取得
-        const decoded = decode_credential_bundle_wasm(
+        const decodedRaw = decode_credential_bundle_wasm(
             body.bundle, keys.gatewayKeyId, env.VAPID_PRIVATE_KEY_D,
         );
+        // WASM は JSON 文字列を返すのでパースが必要
+        const decoded = typeof decodedRaw === 'string' ? JSON.parse(decodedRaw) : decodedRaw;
+        console.log('decoded:', decoded);
         const subscription: PushSubscription = {
             endpoint: decoded.endpoint,
             p256dh: decoded.p256dh,
@@ -331,7 +334,7 @@ async function encryptPayload(
 
     // ECDH
     const sharedBits = await crypto.subtle.deriveBits(
-        { name: 'ECDH', $public: recipientKey },
+        { name: 'ECDH', public: recipientKey } as EcdhKeyDeriveParams,
         keyPair.privateKey,
         256,
     );

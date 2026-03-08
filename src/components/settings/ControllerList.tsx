@@ -156,7 +156,11 @@ export default function ControllerList() {
 							</tr>
 						</thead>
 						<tbody>
-							{devices.map((d, i) => (
+							{devices.map((d, i) => {
+								const alreadyAdded = controllers.some(
+									(c) => c.vid === d.vid && c.pid === d.pid && c.instance === d.instance,
+								);
+								return (
 								<tr key={i}>
 									<td>{d.vid}</td>
 									<td>{d.pid}</td>
@@ -168,8 +172,9 @@ export default function ControllerList() {
 											type="button"
 											className="btn btn-primary btn-sm"
 											onClick={() => addController(d.vid, d.pid, d.instance)}
+											disabled={alreadyAdded}
 										>
-											追加
+											{alreadyAdded ? '追加済' : '追加'}
 										</button>
 										{d.driver !== 'WinUSB' && (
 											<button
@@ -182,7 +187,8 @@ export default function ControllerList() {
 										)}
 									</td>
 								</tr>
-							))}
+								);
+							})}
 						</tbody>
 					</table>
 				</>
