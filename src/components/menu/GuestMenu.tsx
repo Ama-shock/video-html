@@ -7,6 +7,7 @@ import {
 	reset,
 	setControllerAssignment,
 	setError,
+	setPeers,
 	setRoomKey,
 	setStatus,
 	setVideoQuality,
@@ -27,6 +28,7 @@ export default function GuestMenu() {
 	const controllerId = useSelector((s: RootState) => s.guest.controllerId);
 	const hostProfile = useSelector((s: RootState) => s.guest.hostProfile);
 	const videoQuality = useSelector((s: RootState) => s.guest.videoQuality);
+	const peers = useSelector((s: RootState) => s.guest.peers);
 	const error = useSelector((s: RootState) => s.guest.error);
 	const username = useSelector((s: RootState) => s.identity.username);
 
@@ -106,6 +108,8 @@ export default function GuestMenu() {
 				onHostCommand: (cmd) => {
 					if (cmd.type === 'quality_change' && typeof cmd.videoQuality === 'string') {
 						dispatch(setVideoQuality(cmd.videoQuality));
+					} else if (cmd.type === 'guest_list' && Array.isArray(cmd.guests)) {
+						dispatch(setPeers(cmd.guests as { userId: string; username: string }[]));
 					}
 				},
 			});
@@ -228,6 +232,38 @@ export default function GuestMenu() {
 					)}
 				</div>
 			)}
+
+			{/* 同室ゲスト */}
+			{status === 'connected' && (
+				<div className="menu-card">
+					<h4>同室のゲスト ({peers.length})</h4>
+					{peers.length === 0 ? (
+						<p className="empty-msg">他のゲストはいません</p>
+					) : (
+						<div className="peer-list">
+							{peers.map((p) => (
+								<PeerCard key={p.userId} userId={p.userId} username={p.username} />
+							))}
+						</div>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function PeerCard({ userId, username }: { userId: string; username: string }) {
+	const [avatar, setAvatar] = useState<string | null>(null);
+	useEffect(() => {
+		generateIdenticonDataUrl(userId).then(setAvatar);
+	}, [userId]);
+	return (
+		<div className="peer-card">
+			{avatar && <img src={avatar} alt="" className="peer-avatar" width={28} height={28} />}
+			<div className="peer-info">
+				<span className="peer-name">{username}</span>
+				<span className="peer-id">{userId.slice(0, 12)}…</span>
+			</div>
 		</div>
 	);
 }

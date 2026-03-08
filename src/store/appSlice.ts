@@ -13,6 +13,8 @@ type AppState = {
 	videoHeight: number;
 	switchBtWsPort: number;
 	initialized: boolean;
+	/** 映像キャプチャ中か（ホスト側） */
+	streaming: boolean;
 };
 
 const initialState: AppState = {
@@ -25,6 +27,7 @@ const initialState: AppState = {
 	videoHeight: 1080,
 	switchBtWsPort: 8765,
 	initialized: false,
+	streaming: false,
 };
 
 const appSlice = createSlice({
@@ -58,6 +61,9 @@ const appSlice = createSlice({
 		setSwitchBtWsPort(state, action: PayloadAction<number>) {
 			state.switchBtWsPort = action.payload;
 		},
+		setStreaming(state, action: PayloadAction<boolean>) {
+			state.streaming = action.payload;
+		},
 		setInitialized(state) {
 			state.initialized = true;
 		},
@@ -73,6 +79,7 @@ export const {
 	setAudioDevice,
 	setResolution,
 	setSwitchBtWsPort,
+	setStreaming,
 	setInitialized,
 } = appSlice.actions;
 

@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import type { PeerInfo } from '../webrtc/types';
 
 export type GuestConnectionStatus =
 	| 'idle'
@@ -20,6 +21,7 @@ type GuestState = {
 	controllerId: number | null; // ホストから割り当てられたコントローラー ID
 	hostProfile: HostProfile | null; // 接続先ホストの情報
 	videoQuality: string | null; // ホストから通知された受信映像品質
+	peers: PeerInfo[]; // 同室の他ゲスト
 	error: string | null;
 };
 
@@ -30,6 +32,7 @@ const initialState: GuestState = {
 	controllerId: null,
 	hostProfile: null,
 	videoQuality: null,
+	peers: [],
 	error: null,
 };
 
@@ -56,6 +59,9 @@ const guestSlice = createSlice({
 		setVideoQuality(state, action: PayloadAction<string | null>) {
 			state.videoQuality = action.payload;
 		},
+		setPeers(state, action: PayloadAction<PeerInfo[]>) {
+			state.peers = action.payload;
+		},
 		setError(state, action: PayloadAction<string>) {
 			state.status = 'error';
 			state.error = action.payload;
@@ -66,11 +72,12 @@ const guestSlice = createSlice({
 			state.controllerId = null;
 			state.hostProfile = null;
 			state.videoQuality = null;
+			state.peers = [];
 			state.error = null;
 		},
 	},
 });
 
-export const { setRoomKey, setStatus, setHostStream, setControllerAssignment, setHostProfile, setVideoQuality, setError, reset } =
+export const { setRoomKey, setStatus, setHostStream, setControllerAssignment, setHostProfile, setVideoQuality, setPeers, setError, reset } =
 	guestSlice.actions;
 export default guestSlice.reducer;

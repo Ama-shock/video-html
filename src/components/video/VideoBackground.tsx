@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSelector } from 'react-redux';
-import type { RootState } from '../../store';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../../store';
+import { setStreaming } from '../../store/appSlice';
 
 /**
  * Full-viewport video element that always fills the screen.
  * Capture starts automatically on mount. Controls live in the overlay menu.
  */
 export default function VideoBackground() {
+	const dispatch = useDispatch<AppDispatch>();
 	const videoDeviceId = useSelector((s: RootState) => s.app.videoDeviceId);
 	const audioDeviceId = useSelector((s: RootState) => s.app.audioDeviceId);
 	const videoWidth = useSelector((s: RootState) => s.app.videoWidth);
@@ -38,6 +40,7 @@ export default function VideoBackground() {
 					await videoRef.current.play();
 				}
 				setStarted(true);
+				dispatch(setStreaming(true));
 			} catch (err) {
 				console.error('Capture failed:', err);
 				const msg = err instanceof Error ? err.message : String(err);
@@ -61,8 +64,9 @@ export default function VideoBackground() {
 	useEffect(() => {
 		return () => {
 			streamRef.current?.getTracks().forEach((t) => t.stop());
+			dispatch(setStreaming(false));
 		};
-	}, []);
+	}, [dispatch]);
 
 	return (
 		<div className="video-bg">

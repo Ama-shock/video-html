@@ -8,7 +8,7 @@
 
 import { pushToBundle } from '../webpush/gateway';
 import { type ConnectionStats, getConnectionStats } from './stats';
-import type { ControllerInput, HostCommand, JoinAccepted, JoinRejected, JoinRequest } from './types';
+import type { ControllerInput, GuestListCommand, HostCommand, JoinAccepted, JoinRejected, JoinRequest, PeerInfo } from './types';
 
 const RTC_CONFIG: RTCConfiguration = {
 	iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
@@ -191,13 +191,37 @@ export class HostWebRTC {
 					/* ignore */
 				}
 			}
-			session.pc.close();
+			// send() 後にメッセージが届く時間を確保してから close()
+			setTimeout(() => session.pc.close(), 100);
 		}
 	}
 
 	disconnectAll(): void {
-		for (const [userId] of this.sessions) {
+		// イテレーション中の delete を避けるためキー一覧を先にコピー
+		const userIds = [...this.sessions.keys()];
+		for (const userId of userIds) {
 			this.disconnectGuest(userId);
+		}
+	}
+
+	/**
+	 * 全ゲストに現在のゲスト一覧を送信する。
+	 * 各ゲストには自分以外のゲスト情報が届く。
+	 */
+	broadcastGuestList(): void {
+		const allGuests: PeerInfo[] = [];
+		for (const session of this.sessions.values()) {
+			if (session.connectionState === 'connected') {
+				allGuests.push({ userId: session.userId, username: session.username });
+			}
+		}
+		for (const session of this.sessions.values()) {
+			if (session.commandChannel?.readyState !== 'open') continue;
+			const peers = allGuests.filter((g) => g.userId !== session.userId);
+			const cmd: GuestListCommand = { type: 'guest_list', guests: peers };
+			try {
+				session.commandChannel.send(JSON.stringify(cmd));
+			} catch { /* ignore */ }
 		}
 	}
 

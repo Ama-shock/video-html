@@ -50,9 +50,20 @@ export type ControllerInput = {
 };
 
 /** WebRTC データチャネル経由のホストコマンド (ホスト → ゲスト) */
-export type HostCommand = QualityChangeCommand;
+export type HostCommand = QualityChangeCommand | GuestListCommand;
 
 export type QualityChangeCommand = {
 	type: 'quality_change';
 	videoQuality: string; // 'high' | 'medium' | 'low'
+};
+
+/** 同室ゲスト一覧通知 */
+export type GuestListCommand = {
+	type: 'guest_list';
+	guests: PeerInfo[];
+};
+
+export type PeerInfo = {
+	userId: string;
+	username: string;
 };

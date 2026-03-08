@@ -35,6 +35,14 @@ export default function OverlayMenu() {
 	const menuOpen = useSelector((s: RootState) => s.app.menuOpen);
 	const menuSection = useSelector((s: RootState) => s.app.menuSection);
 	const mode = useSelector((s: RootState) => s.app.mode);
+	const streaming = useSelector((s: RootState) => s.app.streaming);
+	const roomStatus = useSelector((s: RootState) => s.host.roomStatus);
+	const guestStatus = useSelector((s: RootState) => s.guest.status);
+
+	// 映像配信中・部屋開放中・ゲスト接続中はモード切替を無効化
+	const modeLocked = streaming
+		|| roomStatus !== 'closed'
+		|| (guestStatus !== 'idle' && guestStatus !== 'rejected' && guestStatus !== 'error');
 
 	const sections = SECTIONS_BY_MODE[mode];
 
@@ -80,6 +88,8 @@ export default function OverlayMenu() {
 							key={m}
 							className={`mode-btn ${mode === m ? 'active' : ''}`}
 							onClick={() => dispatch(setMode(m))}
+							disabled={modeLocked && mode !== m}
+							title={modeLocked && mode !== m ? '配信中・接続中はモードを切り替えられません' : undefined}
 						>
 							{MODE_LABELS[m]}
 						</button>

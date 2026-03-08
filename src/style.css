@@ -220,6 +220,14 @@ body,
 	color: #fff;
 	font-weight: 600;
 }
+.mode-btn:disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+.mode-btn:disabled:hover {
+	color: var(--text-dim);
+	border-color: var(--border);
+}
 
 /* ---- Menu Tabs ---- */
 .menu-tabs {
@@ -374,6 +382,40 @@ body,
 }
 .host-userid {
 	font-size: 11px;
+	color: var(--text-dim);
+	font-family: monospace;
+}
+
+/* ---- Peer list (guest view) ---- */
+.peer-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.peer-card {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	background: var(--bg2);
+	border-radius: var(--radius);
+}
+.peer-avatar {
+	border-radius: 4px;
+	flex-shrink: 0;
+}
+.peer-info {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+.peer-name {
+	font-size: 13px;
+	font-weight: 600;
+}
+.peer-id {
+	font-size: 10px;
 	color: var(--text-dim);
 	font-family: monospace;
 }
@@ -574,6 +616,40 @@ input[type="range"] {
 	font-weight: 600;
 	color: var(--success);
 	font-size: 13px;
+}
+.room-expiry {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 6px 10px;
+	border-radius: var(--radius);
+	font-size: 12px;
+	margin: 6px 0;
+}
+.room-expiry-label {
+	font-weight: 500;
+}
+.room-expiry.expiry-ok {
+	background: rgba(91, 239, 138, 0.08);
+	color: var(--text-dim);
+}
+.room-expiry.expiry-warn {
+	background: rgba(239, 200, 91, 0.12);
+	color: #efc85b;
+}
+.room-expiry.expiry-critical {
+	background: rgba(239, 91, 91, 0.12);
+	color: var(--danger);
+	animation: pulse-expiry 2s ease-in-out infinite;
+}
+.room-expiry.expiry-expired {
+	background: rgba(239, 91, 91, 0.18);
+	color: var(--danger);
+	font-weight: 600;
+}
+@keyframes pulse-expiry {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.7; }
 }
 .room-key-display {
 	background: var(--bg3);
