@@ -1,5 +1,5 @@
 /* ==========================================
-   video-html v2 — スタイルシート
+   video-html v2 — Fullscreen Overlay UI
    ========================================== */
 
 :root {
@@ -15,7 +15,7 @@
 	--danger-hover: #f57a7a;
 	--success: #5bef8a;
 	--radius: 6px;
-	--sidebar-width: 220px;
+	--menu-width: 380px;
 }
 
 *,
@@ -29,63 +29,187 @@ body,
 #root {
 	height: 100%;
 	margin: 0;
-	background: var(--bg);
+	background: #000;
 	color: var(--text);
 	font-family: "Segoe UI", system-ui, sans-serif;
 	font-size: 14px;
+	overflow: hidden;
 }
 
-/* ---- Layout ---- */
-.layout {
-	display: flex;
+/* ---- App Root ---- */
+.app-root {
+	position: relative;
+	width: 100vw;
 	height: 100vh;
 	overflow: hidden;
 }
 
-.sidebar {
-	width: var(--sidebar-width);
-	background: var(--bg2);
-	border-right: 1px solid var(--border);
+/* ---- Video Background (fills entire viewport) ---- */
+.video-bg {
+	position: absolute;
+	inset: 0;
+	background: #000;
+	z-index: 0;
+}
+.video-bg video {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	display: block;
+}
+.video-bg-prompt {
+	position: absolute;
+	inset: 0;
 	display: flex;
-	flex-direction: column;
-	padding: 12px 0;
-	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.7);
+	z-index: 1;
 }
 
-.sidebar-brand {
+/* ---- Guest Main View (centered card on dark bg) ---- */
+.guest-main-view {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--bg);
+	z-index: 0;
+}
+.guest-center-card {
+	background: var(--bg2);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 32px;
+	max-width: 460px;
+	width: 90%;
+}
+.guest-center-card h2 {
+	margin-top: 0;
+	font-size: 20px;
+}
+.guest-status-screen {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	padding: 20px 0;
+}
+.guest-controller-badge {
+	position: absolute;
+	bottom: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: rgba(0, 0, 0, 0.7);
+	color: var(--accent);
+	padding: 6px 16px;
+	border-radius: var(--radius);
+	font-size: 13px;
+	font-weight: 600;
+	z-index: 2;
+}
+
+/* Spinner */
+.spinner {
+	width: 32px;
+	height: 32px;
+	border: 3px solid var(--border);
+	border-top-color: var(--accent);
+	border-radius: 50%;
+	animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}
+
+.text-danger {
+	color: var(--danger);
+	font-weight: 600;
+}
+
+/* ---- Menu Backdrop ---- */
+.menu-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.4);
+	z-index: 90;
+}
+
+/* ---- Menu Panel (slide-in from right) ---- */
+.menu-panel {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: var(--menu-width);
+	max-width: 90vw;
+	background: rgba(15, 15, 19, 0.92);
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+	border-left: 1px solid var(--border);
+	z-index: 100;
+	display: flex;
+	flex-direction: column;
+	transform: translateX(100%);
+	transition: transform 0.25s ease;
+	overflow: hidden;
+}
+.menu-panel.open {
+	transform: translateX(0);
+}
+
+/* ---- Menu Header ---- */
+.menu-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+.menu-brand {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 0 16px 12px;
-	border-bottom: 1px solid var(--border);
-	margin-bottom: 8px;
 }
-
 .brand-text {
 	font-weight: 700;
 	font-size: 16px;
 	color: var(--accent);
-	flex: 1;
+}
+.menu-close-btn {
+	background: none;
+	border: none;
+	color: var(--text-dim);
+	font-size: 18px;
+	cursor: pointer;
+	padding: 4px 8px;
+	border-radius: var(--radius);
+	transition: color 0.15s;
+}
+.menu-close-btn:hover {
+	color: var(--text);
 }
 
-.mode-switcher {
+/* ---- Mode Switcher ---- */
+.menu-mode-switcher {
 	display: flex;
-	flex-direction: column;
 	gap: 4px;
-	padding: 8px 12px;
+	padding: 8px 16px;
 	border-bottom: 1px solid var(--border);
-	margin-bottom: 8px;
+	flex-shrink: 0;
 }
-
 .mode-btn {
+	flex: 1;
 	background: none;
 	border: 1px solid var(--border);
 	color: var(--text-dim);
-	padding: 4px 8px;
+	padding: 5px 8px;
 	border-radius: var(--radius);
 	cursor: pointer;
 	font-size: 12px;
-	text-align: left;
+	text-align: center;
 	transition: all 0.15s;
 }
 .mode-btn:hover {
@@ -99,66 +223,149 @@ body,
 	font-weight: 600;
 }
 
-.nav-list {
-	list-style: none;
-	margin: 0;
-	padding: 0 8px;
+/* ---- Menu Tabs ---- */
+.menu-tabs {
+	display: flex;
+	gap: 2px;
+	padding: 8px 16px;
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+	overflow-x: auto;
 }
-
-.nav-btn {
-	display: block;
-	width: 100%;
+.menu-tab {
 	background: none;
 	border: none;
 	color: var(--text-dim);
-	padding: 8px 12px;
+	padding: 6px 12px;
 	border-radius: var(--radius);
 	cursor: pointer;
-	text-align: left;
-	font-size: 13px;
+	font-size: 12px;
+	white-space: nowrap;
 	transition: all 0.15s;
 }
-.nav-btn:hover {
-	background: var(--bg3);
+.menu-tab:hover {
 	color: var(--text);
-}
-.nav-btn.active {
 	background: var(--bg3);
+}
+.menu-tab.active {
 	color: var(--accent);
+	background: var(--bg3);
 	font-weight: 600;
 }
 
-.content {
+/* ---- Menu Content ---- */
+.menu-content {
 	flex: 1;
 	overflow-y: auto;
-	padding: 24px;
+	padding: 16px;
 }
 
-/* ---- Panels ---- */
-.panel {
-	max-width: 800px;
+/* ---- Menu Section (generic) ---- */
+.menu-section {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
 }
-.panel h2 {
-	margin-top: 0;
-	font-size: 20px;
-}
-.panel h3 {
-	font-size: 15px;
+.menu-section h3 {
+	font-size: 14px;
 	color: var(--text-dim);
-	margin-bottom: 12px;
+	margin: 0;
 }
-.panel h4 {
+.menu-section h4 {
 	font-size: 13px;
 	color: var(--text-dim);
-	margin-bottom: 8px;
+	margin: 8px 0 4px;
 }
-section {
-	margin-bottom: 28px;
+
+.menu-card {
+	background: var(--bg2);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+/* ---- Menu Sub-tabs ---- */
+.menu-subtabs {
+	display: flex;
+	gap: 4px;
+}
+.menu-subtab {
+	padding: 5px 10px;
+	border-radius: var(--radius);
+	border: 1px solid var(--border);
+	background: none;
+	color: var(--text-dim);
+	cursor: pointer;
+	font-size: 12px;
+	transition: all 0.15s;
+}
+.menu-subtab:hover {
+	color: var(--text);
+	border-color: var(--accent);
+}
+.menu-subtab.active {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+/* ---- Port input row ---- */
+.port-input-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+.port-input-row input {
+	flex: 1;
+}
+
+/* ---- Guest Connection Status ---- */
+.guest-connection-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+}
+.status-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--text-dim);
+	flex-shrink: 0;
+}
+.status-dot.connected {
+	background: var(--success);
+}
+.status-dot.waiting {
+	background: #f90;
+}
+
+/* ---- Identity ---- */
+.identity-row {
+	display: flex;
+	gap: 12px;
+	align-items: flex-start;
+}
+.identicon-small {
+	width: 48px;
+	height: 48px;
+	border-radius: 6px;
+	flex-shrink: 0;
+}
+.identity-fields {
+	flex: 1;
+	min-width: 0;
+}
+.key-display-small {
+	margin-top: 8px;
 }
 
 /* ---- Forms ---- */
 .form-group {
-	margin-bottom: 16px;
+	margin-bottom: 10px;
 }
 .form-group label {
 	display: block;
@@ -169,12 +376,13 @@ section {
 
 input[type="text"],
 input[type="url"],
+input[type="number"],
 textarea,
 select {
 	background: var(--bg3);
 	border: 1px solid var(--border);
 	color: var(--text);
-	padding: 8px 10px;
+	padding: 7px 10px;
 	border-radius: var(--radius);
 	font-size: 13px;
 	width: 100%;
@@ -186,15 +394,22 @@ textarea:focus,
 select:focus {
 	border-color: var(--accent);
 }
+input:disabled {
+	opacity: 0.6;
+}
 textarea {
 	resize: vertical;
 	font-family: monospace;
+}
+input[type="range"] {
+	width: 100%;
+	accent-color: var(--accent);
 }
 
 /* ---- Buttons ---- */
 .btn {
 	display: inline-block;
-	padding: 8px 16px;
+	padding: 7px 14px;
 	border-radius: var(--radius);
 	border: none;
 	cursor: pointer;
@@ -243,9 +458,8 @@ textarea {
 	background: rgba(239, 91, 91, 0.1);
 	border: 1px solid var(--danger);
 	color: var(--danger);
-	padding: 10px 14px;
+	padding: 8px 12px;
 	border-radius: var(--radius);
-	margin-bottom: 16px;
 	font-size: 13px;
 }
 .empty-msg {
@@ -266,6 +480,7 @@ textarea {
 	height: 100vh;
 	color: var(--text-dim);
 	font-size: 18px;
+	background: var(--bg);
 }
 
 .setup-screen {
@@ -273,6 +488,7 @@ textarea {
 	align-items: center;
 	justify-content: center;
 	height: 100vh;
+	background: var(--bg);
 }
 .setup-card {
 	background: var(--bg2);
@@ -292,39 +508,13 @@ textarea {
 	margin-bottom: 24px;
 }
 
-/* ---- Identity ---- */
+/* ---- Identity (setup) ---- */
 .identicon-large {
 	width: 80px;
 	height: 80px;
 	border-radius: 8px;
 	margin-bottom: 16px;
 }
-
-.identity-card {
-	display: flex;
-	gap: 20px;
-	align-items: flex-start;
-	background: var(--bg2);
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 20px;
-	margin-bottom: 20px;
-}
-.identity-info {
-	flex: 1;
-}
-
-.key-display {
-	font-family: monospace;
-	font-size: 11px;
-	background: var(--bg3);
-	border: 1px solid var(--border);
-	padding: 10px;
-	border-radius: var(--radius);
-	word-break: break-all;
-	color: var(--text-dim);
-}
-
 .user-avatar {
 	border-radius: 4px;
 	display: block;
@@ -333,121 +523,73 @@ textarea {
 	background: var(--bg3);
 	border-radius: 4px;
 }
-
-/* ---- Video ---- */
-.video-view {
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
-}
-
-.video-container {
-	position: relative;
-	background: #000;
+.key-display {
+	font-family: monospace;
+	font-size: 11px;
+	background: var(--bg3);
+	border: 1px solid var(--border);
+	padding: 8px;
 	border-radius: var(--radius);
-	overflow: hidden;
-	max-width: 100%;
-	aspect-ratio: 16 / 9;
-}
-.video-container video {
-	width: 100%;
-	height: 100%;
-	object-fit: contain;
-	display: block;
-}
-
-.video-overlay {
-	position: absolute;
-	inset: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background: rgba(0, 0, 0, 0.7);
-}
-
-.video-controls {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 12px;
-	align-items: center;
-}
-.control-group {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	min-width: 180px;
-}
-.control-group label {
-	font-size: 12px;
+	word-break: break-all;
 	color: var(--text-dim);
 }
 
-/* ---- Host ---- */
-.room-setup {
-	background: var(--bg2);
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 20px;
-}
-.room-active {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	margin-bottom: 24px;
-}
+/* ---- Room Key ---- */
 .room-status-badge {
 	font-weight: 600;
 	color: var(--success);
+	font-size: 13px;
 }
-
 .room-key-display {
-	background: var(--bg2);
+	background: var(--bg3);
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
-	padding: 16px;
+	padding: 10px;
 }
 .room-key-display h4 {
-	margin: 0 0 8px;
-	font-size: 13px;
+	margin: 0 0 6px;
+	font-size: 12px;
 	color: var(--text-dim);
 }
 .key-textarea {
-	font-size: 11px;
+	font-size: 10px;
 	font-family: monospace;
 	resize: none;
 	width: 100%;
-	background: var(--bg3);
+	background: var(--bg);
 	border: 1px solid var(--border);
 	color: var(--text-dim);
-	padding: 8px;
+	padding: 6px;
 	border-radius: var(--radius);
 }
 .key-actions {
 	display: flex;
-	gap: 8px;
-	margin-top: 8px;
+	gap: 6px;
+	margin-top: 6px;
 }
 
+/* ---- Guest List ---- */
 .guest-list {
 	display: flex;
 	flex-direction: column;
-	gap: 16px;
+	gap: 8px;
 }
 .guest-card {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 8px;
 	background: var(--bg2);
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
-	padding: 12px 16px;
+	padding: 8px 12px;
+	font-size: 13px;
 }
 .guest-card.pending {
 	border-color: #f90;
 }
 .guest-avatar {
-	width: 36px;
-	height: 36px;
+	width: 32px;
+	height: 32px;
 	border-radius: 4px;
 	flex-shrink: 0;
 }
@@ -459,131 +601,56 @@ textarea {
 }
 .guest-name {
 	font-weight: 600;
+	font-size: 13px;
 }
 .guest-id {
-	font-size: 11px;
+	font-size: 10px;
 	color: var(--text-dim);
 	font-family: monospace;
 }
 .guest-state {
-	font-size: 11px;
+	font-size: 10px;
 }
 .guest-controller {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 2px;
 }
 .guest-controller label {
-	font-size: 11px;
+	font-size: 10px;
 	color: var(--text-dim);
 }
 .guest-controller select {
-	width: 90px;
+	width: 70px;
+	font-size: 12px;
+	padding: 3px 4px;
 }
 .guest-actions {
 	display: flex;
-	gap: 6px;
-}
-
-/* ---- Guest ---- */
-.join-form {
-	background: var(--bg2);
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 20px;
-}
-
-.status-badge {
-	padding: 8px 14px;
-	border-radius: var(--radius);
-	font-weight: 600;
-	font-size: 13px;
-	display: inline-block;
-}
-.status-badge.joining,
-.status-badge.waiting {
-	background: rgba(255, 153, 0, 0.15);
-	color: #f90;
-}
-.status-badge.connected {
-	background: rgba(91, 239, 138, 0.15);
-	color: var(--success);
-}
-.status-badge.rejected {
-	background: rgba(239, 91, 91, 0.15);
-	color: var(--danger);
-}
-
-.guest-video-container {
-	border-radius: var(--radius);
-	overflow: hidden;
-	background: #000;
-	aspect-ratio: 16 / 9;
-}
-.guest-video {
-	width: 100%;
-	height: 100%;
-	object-fit: contain;
-}
-.controller-info {
-	padding: 8px 14px;
-	background: var(--bg2);
-	border-radius: var(--radius);
-	font-size: 13px;
-	color: var(--accent);
-}
-.guest-active {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
+	gap: 4px;
 }
 
 /* ---- Gamepad ---- */
-.tab-bar {
-	display: flex;
-	gap: 4px;
-	margin-bottom: 16px;
-}
-.tab-btn {
-	padding: 6px 14px;
-	border-radius: var(--radius);
-	border: 1px solid var(--border);
-	background: none;
-	color: var(--text-dim);
-	cursor: pointer;
-	font-size: 13px;
-	transition: all 0.15s;
-}
-.tab-btn:hover {
-	color: var(--text);
-	border-color: var(--accent);
-}
-.tab-btn.active {
-	background: var(--accent);
-	border-color: var(--accent);
-	color: #fff;
-}
-
 .gamepad-list {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 8px;
 }
 .gamepad-row {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 8px;
 	background: var(--bg2);
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
-	padding: 12px 16px;
+	padding: 8px 12px;
 }
 .gamepad-row.relay-active {
 	border-color: var(--success);
 }
 .gamepad-info {
 	display: flex;
-	gap: 8px;
+	gap: 6px;
 	align-items: center;
 	flex: 1;
 	min-width: 0;
@@ -591,9 +658,10 @@ textarea {
 .gamepad-index {
 	font-weight: 700;
 	color: var(--accent);
+	font-size: 13px;
 }
 .gamepad-id {
-	font-size: 12px;
+	font-size: 11px;
 	color: var(--text-dim);
 	font-family: monospace;
 	overflow: hidden;
@@ -602,64 +670,70 @@ textarea {
 }
 .relay-config {
 	display: flex;
-	gap: 8px;
+	gap: 6px;
 	align-items: center;
 	flex-shrink: 0;
 }
 .relay-config select {
-	width: 100px;
+	width: 90px;
+	font-size: 12px;
+	padding: 3px 4px;
 }
 
+/* ---- Keymap ---- */
 .keymap-editor {
-	max-width: 600px;
+	max-width: 100%;
 }
 .keymap-table {
 	width: 100%;
 	border-collapse: collapse;
-	margin-bottom: 16px;
+	margin-bottom: 12px;
 }
 .keymap-table th,
 .keymap-table td {
-	padding: 8px 12px;
+	padding: 6px 8px;
 	border-bottom: 1px solid var(--border);
 	text-align: left;
-	font-size: 13px;
+	font-size: 12px;
 }
 .keymap-table th {
 	color: var(--text-dim);
 	font-weight: 500;
 }
 .keymap-table select {
-	width: 120px;
+	width: 100px;
+	font-size: 12px;
+	padding: 3px 4px;
 }
 .keymap-actions {
 	display: flex;
-	gap: 8px;
+	gap: 6px;
 }
 
-/* ---- Settings ---- */
+/* ---- Controller / Device Tables (in menu) ---- */
 .section-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 12px;
+	margin-bottom: 8px;
 }
 .section-header h4 {
 	margin: 0;
+	font-size: 13px;
 }
 
 .controller-table,
 .device-table {
 	width: 100%;
 	border-collapse: collapse;
-	margin-bottom: 16px;
-	font-size: 13px;
+	margin-bottom: 12px;
+	font-size: 12px;
 }
 .controller-table th,
 .controller-table td,
 .device-table th,
 .device-table td {
-	padding: 8px 10px;
+	padding: 5px 6px;
 	border-bottom: 1px solid var(--border);
 	text-align: left;
 }
@@ -674,10 +748,10 @@ textarea {
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar {
-	width: 6px;
+	width: 5px;
 }
 ::-webkit-scrollbar-track {
-	background: var(--bg);
+	background: transparent;
 }
 ::-webkit-scrollbar-thumb {
 	background: var(--border);

@@ -17,11 +17,13 @@ import { subscribeToPush } from '../../webpush/subscription';
 import { GuestWebRTC } from '../../webrtc/guest';
 import type { JoinAccepted } from '../../webrtc/types';
 
-export default function GuestPanel() {
+/**
+ * Guest main view that fills the screen.
+ * Transitions: room key input -> waiting -> fullscreen video.
+ */
+export default function GuestMainView() {
 	const dispatch = useDispatch<AppDispatch>();
-	const mode = useSelector((s: RootState) => s.app.mode);
 	const status = useSelector((s: RootState) => s.guest.status);
-	const _roomKey = useSelector((s: RootState) => s.guest.roomKey);
 	const hostStream = useSelector((s: RootState) => s.guest.hostStream);
 	const controllerId = useSelector((s: RootState) => s.guest.controllerId);
 	const error = useSelector((s: RootState) => s.guest.error);
@@ -47,20 +49,15 @@ export default function GuestPanel() {
 			dispatch(setError('無効な部屋鍵です'));
 			return;
 		}
-
 		dispatch(setRoomKey(key));
 		dispatch(setStatus('joining'));
-
 		try {
 			const swReg = await navigator.serviceWorker.getRegistration();
 			if (!swReg) throw new Error('Service worker が登録されていません');
-
 			const gateway = await fetchGatewayInfo();
 			const sub = await subscribeToPush(swReg);
-			const guestBundle = await createRoomKey(sub, gateway, 3600); // 1時間有効
-
+			const guestBundle = await createRoomKey(sub, gateway, 3600);
 			const identity = await getOrCreateIdentity();
-
 			const rtc = new GuestWebRTC({
 				onRemoteStream: (stream) => {
 					dispatch(setHostStream(true));
@@ -81,7 +78,6 @@ export default function GuestPanel() {
 				},
 			});
 			guestRtcRef.current = rtc;
-
 			await rtc.join(key, guestBundle, identity, username);
 			dispatch(setStatus('waiting'));
 		} catch (err) {
@@ -100,7 +96,6 @@ export default function GuestPanel() {
 	useEffect(() => {
 		if (status !== 'connected' || !guestRtcRef.current) return;
 		startGamepadPolling();
-
 		const handler = (state: GamepadState) => {
 			guestRtcRef.current?.sendControllerInput({
 				type: 'controller_input',
@@ -128,69 +123,88 @@ export default function GuestPanel() {
 		return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
 	}, [dispatch]);
 
-	if (mode !== 'guest') {
+	// Connected with stream: show fullscreen video
+	if (hostStream) {
 		return (
-			<div className="panel">
-				<h2>ゲストパネル</h2>
-				<p>上部のモード切替で「ゲスト」を選択してください。</p>
+			<div className="video-bg">
+				{/* biome-ignore lint/a11y/useMediaCaption: live stream */}
+				<video ref={videoRef} autoPlay playsInline controls={false} />
+				{controllerId !== null && (
+					<div className="guest-controller-badge">
+						コントローラー #{controllerId}
+					</div>
+				)}
 			</div>
 		);
 	}
 
+	// Not yet connected: show centered UI
 	return (
-		<div className="panel guest-panel">
-			<h2>ゲストパネル</h2>
+		<div className="guest-main-view">
+			{/* Hidden video element for receiving stream before it's visible */}
+			{/* biome-ignore lint/a11y/useMediaCaption: live stream */}
+			<video ref={videoRef} style={{ display: 'none' }} autoPlay playsInline />
 
-			{error && <div className="error-msg">{error}</div>}
+			<div className="guest-center-card" onClick={(e) => e.stopPropagation()}>
+				{error && <div className="error-msg">{error}</div>}
 
-			{status === 'idle' || status === 'error' ? (
-				<div className="join-form">
-					<h3>部屋に入室</h3>
-					<div className="form-group">
-						<label>
-							部屋鍵
-							<textarea
-								value={inputKey}
-								onChange={(e) => setInputKey(e.target.value)}
-								placeholder="ホストから受け取った部屋鍵を貼り付けてください"
-								rows={4}
-							/>
-						</label>
-					</div>
-					<button
-						type="button"
-						className="btn btn-primary"
-						onClick={handleJoin}
-						disabled={!inputKey.trim()}
-					>
-						入室する
-					</button>
-				</div>
-			) : (
-				<div className="guest-active">
-					<div className={`status-badge ${status}`}>
-						{status === 'joining' && '⏳ 接続中…'}
-						{status === 'waiting' && '⌛ ホストの承認を待っています…'}
-						{status === 'connected' && '🟢 接続中'}
-						{status === 'rejected' && '🔴 拒否されました'}
-					</div>
-
-					{hostStream && (
-						<div className="guest-video-container">
-							{/* biome-ignore lint/a11y/useMediaCaption: live stream */}
-							<video ref={videoRef} autoPlay playsInline controls={false} className="guest-video" />
+				{(status === 'idle' || status === 'error') && (
+					<>
+						<h2>部屋に入室</h2>
+						<div className="form-group">
+							<label>
+								部屋鍵
+								<textarea
+									value={inputKey}
+									onChange={(e) => setInputKey(e.target.value)}
+									placeholder="ホストから受け取った部屋鍵を貼り付けてください"
+									rows={4}
+								/>
+							</label>
 						</div>
-					)}
+						<button
+							type="button"
+							className="btn btn-primary btn-large"
+							onClick={handleJoin}
+							disabled={!inputKey.trim()}
+						>
+							入室する
+						</button>
+					</>
+				)}
 
-					{controllerId !== null && (
-						<div className="controller-info">コントローラー #{controllerId} として接続中</div>
-					)}
+				{status === 'joining' && (
+					<div className="guest-status-screen">
+						<div className="spinner" />
+						<p>接続中...</p>
+					</div>
+				)}
 
-					<button type="button" className="btn btn-danger" onClick={handleLeave}>
-						退出する
-					</button>
-				</div>
-			)}
+				{status === 'waiting' && (
+					<div className="guest-status-screen">
+						<div className="spinner" />
+						<p>ホストの承認を待っています...</p>
+						<button type="button" className="btn btn-danger" onClick={handleLeave}>
+							キャンセル
+						</button>
+					</div>
+				)}
+
+				{status === 'connected' && !hostStream && (
+					<div className="guest-status-screen">
+						<p>接続済み — 映像待機中</p>
+					</div>
+				)}
+
+				{status === 'rejected' && (
+					<div className="guest-status-screen">
+						<p className="text-danger">接続が拒否されました</p>
+						<button type="button" className="btn btn-secondary" onClick={handleLeave}>
+							戻る
+						</button>
+					</div>
+				)}
+			</div>
 		</div>
 	);
 }

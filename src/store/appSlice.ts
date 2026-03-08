@@ -1,11 +1,12 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
 export type AppMode = 'standalone' | 'host' | 'guest';
-export type Panel = 'video' | 'host' | 'guest' | 'gamepad' | 'settings' | 'identity';
+export type MenuSection = 'video' | 'host' | 'guest' | 'gamepad' | 'identity';
 
 type AppState = {
 	mode: AppMode;
-	activePanel: Panel;
+	menuOpen: boolean;
+	menuSection: MenuSection;
 	videoDeviceId: string | null;
 	audioDeviceId: string | null;
 	videoWidth: number;
@@ -16,7 +17,8 @@ type AppState = {
 
 const initialState: AppState = {
 	mode: 'standalone',
-	activePanel: 'video',
+	menuOpen: false,
+	menuSection: 'video',
 	videoDeviceId: null,
 	audioDeviceId: null,
 	videoWidth: 1920,
@@ -32,8 +34,14 @@ const appSlice = createSlice({
 		setMode(state, action: PayloadAction<AppMode>) {
 			state.mode = action.payload;
 		},
-		setActivePanel(state, action: PayloadAction<Panel>) {
-			state.activePanel = action.payload;
+		setMenuOpen(state, action: PayloadAction<boolean>) {
+			state.menuOpen = action.payload;
+		},
+		toggleMenu(state) {
+			state.menuOpen = !state.menuOpen;
+		},
+		setMenuSection(state, action: PayloadAction<MenuSection>) {
+			state.menuSection = action.payload;
 		},
 		setVideoDevice(state, action: PayloadAction<string | null>) {
 			state.videoDeviceId = action.payload;
@@ -56,7 +64,9 @@ const appSlice = createSlice({
 
 export const {
 	setMode,
-	setActivePanel,
+	setMenuOpen,
+	toggleMenu,
+	setMenuSection,
 	setVideoDevice,
 	setAudioDevice,
 	setResolution,

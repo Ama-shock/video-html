@@ -1,80 +1,58 @@
+import { useCallback, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../store';
-import { type AppMode, type Panel, setActivePanel, setMode } from '../store/appSlice';
-import GamepadPanel from './gamepad/GamepadPanel';
-import GuestPanel from './guest/GuestPanel';
-import HostPanel from './host/HostPanel';
-import IdentityPanel from './identity/IdentityPanel';
-import UserAvatar from './identity/UserAvatar';
-import SettingsPanel from './settings/SettingsPanel';
-import VideoView from './video/VideoView';
+import { setMenuOpen } from '../store/appSlice';
+import GuestMainView from './guest/GuestMainView';
+import OverlayMenu from './menu/OverlayMenu';
+import VideoBackground from './video/VideoBackground';
 
-const PANEL_LABELS: Record<Panel, string> = {
-	video: '📺 映像',
-	host: '🏠 ホスト',
-	guest: '🎮 ゲスト',
-	gamepad: '🕹 ゲームパッド',
-	settings: '⚙ 設定',
-	identity: '👤 プロフィール',
-};
-
-const MODE_LABELS: Record<AppMode, string> = {
-	standalone: 'スタンドアロン',
-	host: 'ホスト',
-	guest: 'ゲスト',
-};
+const CURSOR_HIDE_MS = 3000;
 
 export default function Layout() {
 	const dispatch = useDispatch<AppDispatch>();
-	const activePanel = useSelector((s: RootState) => s.app.activePanel);
 	const mode = useSelector((s: RootState) => s.app.mode);
+	const menuOpen = useSelector((s: RootState) => s.app.menuOpen);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const cursorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const panels: Panel[] = ['video', 'gamepad', 'host', 'guest', 'settings', 'identity'];
+	const showCursor = useCallback(() => {
+		if (rootRef.current) rootRef.current.style.cursor = '';
+		if (cursorTimer.current) clearTimeout(cursorTimer.current);
+		cursorTimer.current = setTimeout(() => {
+			if (!menuOpen && rootRef.current) rootRef.current.style.cursor = 'none';
+		}, CURSOR_HIDE_MS);
+	}, [menuOpen]);
+
+	useEffect(() => {
+		showCursor();
+		return () => {
+			if (cursorTimer.current) clearTimeout(cursorTimer.current);
+		};
+	}, [showCursor]);
+
+	const handleClick = () => {
+		if (!menuOpen) {
+			dispatch(setMenuOpen(true));
+			showCursor();
+		}
+	};
+
+	const handleMouseMove = () => {
+		showCursor();
+	};
 
 	return (
-		<div className="layout">
-			<nav className="sidebar">
-				<div className="sidebar-brand">
-					<span className="brand-text">VidCapt</span>
-					<UserAvatar size={32} />
-				</div>
+		<div
+			ref={rootRef}
+			className="app-root"
+			onMouseMove={handleMouseMove}
+			onClick={handleClick}
+		>
+			{/* Video always fills background (standalone/host: local capture, guest: remote stream) */}
+			{mode === 'guest' ? <GuestMainView /> : <VideoBackground />}
 
-				<div className="mode-switcher">
-					{(['standalone', 'host', 'guest'] as AppMode[]).map((m) => (
-						<button
-							type="button"
-							key={m}
-							className={`mode-btn ${mode === m ? 'active' : ''}`}
-							onClick={() => dispatch(setMode(m))}
-						>
-							{MODE_LABELS[m]}
-						</button>
-					))}
-				</div>
-
-				<ul className="nav-list">
-					{panels.map((panel) => (
-						<li key={panel}>
-							<button
-								type="button"
-								className={`nav-btn ${activePanel === panel ? 'active' : ''}`}
-								onClick={() => dispatch(setActivePanel(panel))}
-							>
-								{PANEL_LABELS[panel]}
-							</button>
-						</li>
-					))}
-				</ul>
-			</nav>
-
-			<main className="content">
-				{activePanel === 'video' && <VideoView />}
-				{activePanel === 'host' && <HostPanel />}
-				{activePanel === 'guest' && <GuestPanel />}
-				{activePanel === 'gamepad' && <GamepadPanel />}
-				{activePanel === 'settings' && <SettingsPanel />}
-				{activePanel === 'identity' && <IdentityPanel />}
-			</main>
+			{/* Overlay menu slides in from right */}
+			<OverlayMenu />
 		</div>
 	);
 }

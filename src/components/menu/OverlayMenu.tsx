@@ -1,0 +1,119 @@
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../../store';
+import { type AppMode, type MenuSection, setMenuOpen, setMenuSection, setMode } from '../../store/appSlice';
+import UserAvatar from '../identity/UserAvatar';
+import GamepadMenu from './GamepadMenu';
+import GuestMenu from './GuestMenu';
+import HostMenu from './HostMenu';
+import IdentityMenu from './IdentityMenu';
+import VideoMenu from './VideoMenu';
+
+const MODE_LABELS: Record<AppMode, string> = {
+	standalone: 'スタンドアロン',
+	host: 'ホスト',
+	guest: 'ゲスト',
+};
+
+type SectionDef = { key: MenuSection; label: string };
+
+const SECTIONS_BY_MODE: Record<AppMode, SectionDef[]> = {
+	standalone: [
+		{ key: 'video', label: '映像' },
+		{ key: 'gamepad', label: 'ゲームパッド' },
+		{ key: 'identity', label: 'プロフィール' },
+	],
+	host: [
+		{ key: 'video', label: '映像' },
+		{ key: 'host', label: 'ホスト管理' },
+		{ key: 'gamepad', label: 'ゲームパッド' },
+		{ key: 'identity', label: 'プロフィール' },
+	],
+	guest: [
+		{ key: 'guest', label: 'ゲスト接続' },
+		{ key: 'gamepad', label: 'ゲームパッド' },
+		{ key: 'identity', label: 'プロフィール' },
+	],
+};
+
+export default function OverlayMenu() {
+	const dispatch = useDispatch<AppDispatch>();
+	const menuOpen = useSelector((s: RootState) => s.app.menuOpen);
+	const menuSection = useSelector((s: RootState) => s.app.menuSection);
+	const mode = useSelector((s: RootState) => s.app.mode);
+
+	const sections = SECTIONS_BY_MODE[mode];
+
+	// Ensure current section is valid for the mode
+	const validSection = sections.find((s) => s.key === menuSection) ? menuSection : sections[0].key;
+
+	const handleClose = () => dispatch(setMenuOpen(false));
+
+	return (
+		<>
+			{/* Backdrop */}
+			{menuOpen && (
+				<div
+					className="menu-backdrop"
+					onClick={(e) => {
+						e.stopPropagation();
+						handleClose();
+					}}
+				/>
+			)}
+
+			{/* Slide-in panel */}
+			<div
+				className={`menu-panel ${menuOpen ? 'open' : ''}`}
+				onClick={(e) => e.stopPropagation()}
+			>
+				{/* Header */}
+				<div className="menu-header">
+					<div className="menu-brand">
+						<UserAvatar size={28} />
+						<span className="brand-text">VidCapt</span>
+					</div>
+					<button type="button" className="menu-close-btn" onClick={handleClose}>
+						✕
+					</button>
+				</div>
+
+				{/* Mode switcher */}
+				<div className="menu-mode-switcher">
+					{(['standalone', 'host', 'guest'] as AppMode[]).map((m) => (
+						<button
+							type="button"
+							key={m}
+							className={`mode-btn ${mode === m ? 'active' : ''}`}
+							onClick={() => dispatch(setMode(m))}
+						>
+							{MODE_LABELS[m]}
+						</button>
+					))}
+				</div>
+
+				{/* Section tabs */}
+				<div className="menu-tabs">
+					{sections.map((s) => (
+						<button
+							type="button"
+							key={s.key}
+							className={`menu-tab ${validSection === s.key ? 'active' : ''}`}
+							onClick={() => dispatch(setMenuSection(s.key))}
+						>
+							{s.label}
+						</button>
+					))}
+				</div>
+
+				{/* Section content */}
+				<div className="menu-content">
+					{validSection === 'video' && <VideoMenu />}
+					{validSection === 'host' && <HostMenu />}
+					{validSection === 'guest' && <GuestMenu />}
+					{validSection === 'gamepad' && <GamepadMenu />}
+					{validSection === 'identity' && <IdentityMenu />}
+				</div>
+			</div>
+		</>
+	);
+}

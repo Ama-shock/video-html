@@ -5,7 +5,7 @@ import { generateIdenticonDataUrl } from '../../identity/identicon';
 import type { AppDispatch, RootState } from '../../store';
 import { setUsername } from '../../store/identitySlice';
 
-export default function IdentityPanel() {
+export default function IdentityMenu() {
 	const dispatch = useDispatch<AppDispatch>();
 	const publicKeyB64 = useSelector((s: RootState) => s.identity.publicKeyB64);
 	const username = useSelector((s: RootState) => s.identity.username);
@@ -14,10 +14,7 @@ export default function IdentityPanel() {
 	const [identiconUrl, setIdenticonUrl] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
 
-	useEffect(() => {
-		setName(username);
-	}, [username]);
-
+	useEffect(() => setName(username), [username]);
 	useEffect(() => {
 		if (publicKeyB64) generateIdenticonDataUrl(publicKeyB64).then(setIdenticonUrl);
 	}, [publicKeyB64]);
@@ -30,12 +27,10 @@ export default function IdentityPanel() {
 	};
 
 	return (
-		<div className="panel identity-panel">
-			<h2>プロフィール</h2>
-
-			<div className="identity-card">
-				{identiconUrl && <img src={identiconUrl} alt="identicon" className="identicon-large" />}
-				<div className="identity-info">
+		<div className="menu-section">
+			<div className="identity-row">
+				{identiconUrl && <img src={identiconUrl} alt="identicon" className="identicon-small" />}
+				<div className="identity-fields">
 					<div className="form-group">
 						<label>
 							ユーザー名
@@ -48,24 +43,15 @@ export default function IdentityPanel() {
 							/>
 						</label>
 					</div>
-					<button
-						type="button"
-						className="btn btn-primary"
-						onClick={handleSave}
-						disabled={!name.trim()}
-					>
-						{saved ? '✓ 保存しました' : '保存'}
+					<button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={!name.trim()}>
+						{saved ? '保存しました' : '保存'}
 					</button>
 				</div>
 			</div>
 
-			<div className="identity-key">
-				<span>ユーザー ID (Ed25519 公開鍵)</span>
+			<div className="key-display-small">
+				<span className="hint">ユーザー ID</span>
 				<div className="key-display">{publicKeyB64 ?? '—'}</div>
-				<p className="hint">
-					この ID
-					はあなたを識別します。秘密鍵はブラウザ内に安全に保管され、外部に出力されることはありません。
-				</p>
 			</div>
 		</div>
 	);
