@@ -806,7 +806,7 @@ input[type="range"] {
 .device-table {
 	width: 100%;
 	border-collapse: collapse;
-	margin-bottom: 12px;
+	margin-bottom: 4px;
 	font-size: 12px;
 }
 .controller-table th,
@@ -824,6 +824,68 @@ input[type="range"] {
 }
 .device-table .btn + .btn {
 	margin-left: 4px;
+}
+.device-table td.mono {
+	font-family: monospace;
+	font-size: 11px;
+}
+.device-table td.action-cell {
+	white-space: nowrap;
+}
+.device-table td.text-dim {
+	color: var(--text-dim);
+	font-style: italic;
+}
+.device-table .orphan-row {
+	opacity: 0.7;
+}
+.device-table .disabled-row {
+	opacity: 0.5;
+}
+
+/* Dongle category sections */
+.dongle-category {
+	margin-bottom: 12px;
+}
+.dongle-category-label {
+	margin: 8px 0 4px;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 3px 8px;
+	border-radius: 3px;
+	display: inline-block;
+}
+.dongle-category-label.category-winusb {
+	background: rgba(91, 141, 239, 0.15);
+	color: var(--accent);
+}
+.dongle-category-label.category-bthusb {
+	background: rgba(91, 239, 138, 0.15);
+	color: var(--success);
+}
+.dongle-category-label.category-other {
+	background: rgba(136, 136, 153, 0.15);
+	color: var(--text-dim);
+}
+
+/* Status badges */
+.status-badge {
+	font-size: 11px;
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-weight: 500;
+}
+.status-badge.paired {
+	background: rgba(91, 239, 138, 0.15);
+	color: var(--success);
+}
+.status-badge.waiting {
+	background: rgba(91, 141, 239, 0.15);
+	color: var(--accent);
+}
+.status-badge.offline {
+	background: rgba(136, 136, 153, 0.15);
+	color: var(--text-dim);
 }
 
 /* ---- Connection Map (drag-to-assign UI) ---- */
