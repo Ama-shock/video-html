@@ -8,7 +8,6 @@ import {
 	encodeCredentialBundle,
 	fromBase64Url,
 	type PushSubscription,
-	toBase64Url,
 } from '../crypto/credentialBundle';
 import type { WebPushSubscriptionInfo } from './subscription';
 
@@ -21,16 +20,9 @@ export type GatewayInfo = {
  * ゲートウェイから公開鍵と鍵 ID を取得する（同一オリジン前提）。
  */
 export async function fetchGatewayInfo(): Promise<GatewayInfo> {
-	const [pkResp, kidResp] = await Promise.all([
-		fetch('/vapid-public-key'),
-		fetch('/gateway-key-id'),
-	]);
-
-	if (!pkResp.ok || !kidResp.ok) throw new Error('Failed to fetch gateway info');
-
-	const { publicKey } = (await pkResp.json()) as { publicKey: string };
-	const { keyId } = (await kidResp.json()) as { keyId: string };
-
+	const resp = await fetch('/gateway-info');
+	if (!resp.ok) throw new Error('Failed to fetch gateway info');
+	const { publicKey, keyId } = (await resp.json()) as GatewayInfo;
 	return { publicKey, keyId };
 }
 
@@ -48,14 +40,13 @@ export async function createRoomKey(
 ): Promise<string> {
 	const expirationSec = Math.floor(Date.now() / 1000) + Math.min(validForSeconds, 86400);
 
-	const bundle = await encodeCredentialBundle(
+	// encodeCredentialBundle は base64url 文字列を直接返す
+	return encodeCredentialBundle(
 		sub as PushSubscription,
 		gateway.publicKey,
 		gateway.keyId,
 		expirationSec,
 	);
-
-	return toBase64Url(bundle);
 }
 
 /**

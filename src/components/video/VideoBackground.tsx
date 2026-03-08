@@ -15,12 +15,14 @@ export default function VideoBackground() {
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const streamRef = useRef<MediaStream | null>(null);
 	const [started, setStarted] = useState(false);
+	const [captureError, setCaptureError] = useState<string | null>(null);
 
 	const startCapture = useCallback(
 		async (vidId?: string | null, audId?: string | null) => {
 			if (streamRef.current) {
 				streamRef.current.getTracks().forEach((t) => t.stop());
 			}
+			setCaptureError(null);
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({
 					video: { deviceId: vidId ?? undefined, width: videoWidth, height: videoHeight },
@@ -38,6 +40,8 @@ export default function VideoBackground() {
 				setStarted(true);
 			} catch (err) {
 				console.error('Capture failed:', err);
+				const msg = err instanceof Error ? err.message : String(err);
+				setCaptureError(`キャプチャに失敗しました: ${msg}`);
 			}
 		},
 		[videoWidth, videoHeight],
@@ -76,6 +80,7 @@ export default function VideoBackground() {
 					>
 						映像キャプチャ開始
 					</button>
+					{captureError && <div className="capture-error">{captureError}</div>}
 				</div>
 			)}
 		</div>

@@ -20,4 +20,4 @@ const instance = new WebAssembly.Instance(wasmModule, importObject);
 bgJs.__wbg_set_wasm(instance.exports);
 (instance.exports.__wbindgen_start as CallableFunction)();
 
-export const { decode_credential_bundle_wasm } = bgJs;
+export const { decode_credential_bundle_wasm, encode_credential_bundle_wasm } = bgJs;

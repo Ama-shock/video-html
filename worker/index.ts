@@ -16,10 +16,10 @@
  *
  * 公開鍵・鍵IDは秘密鍵から自動導出:
  *   VAPID_PUBLIC_KEY  — 非圧縮公開鍵 (65 bytes) … VAPID Authorization ヘッダ用
- *   GATEWAY_KEY_ID    — 圧縮公開鍵 (33 bytes) … クレデンシャルバンドルの鍵識別子
+ *   GATEWAY_KEY_ID    — 公開鍵先頭 8 バイト … クレデンシャルバンドルの鍵識別子
  */
 
-import { decode_credential_bundle_wasm } from './non-resident-vapid';
+import { decode_credential_bundle_wasm, encode_credential_bundle_wasm } from './non-resident-vapid';
 
 export interface Env {
     VAPID_SUBJECT: string;
@@ -55,15 +55,13 @@ async function getDerivedKeys(env: Env): Promise<{ publicKey: string; gatewayKey
     uncompressed.set(x, 1);
     uncompressed.set(y, 33);
 
-    // 圧縮公開鍵: (0x02 or 0x03) || x (33 bytes)
-    const compressed = new Uint8Array(33);
-    compressed[0] = (y[31] & 1) === 0 ? 0x02 : 0x03;
-    compressed.set(x, 1);
+    // 鍵識別子: 非圧縮公開鍵の先頭 8 バイト
+    const keyId = uncompressed.slice(0, 8);
 
     cachedKeys = {
         d: env.VAPID_PRIVATE_KEY_D,
         publicKey: toBase64Url(uncompressed),
-        gatewayKeyId: toBase64Url(compressed),
+        gatewayKeyId: toBase64Url(keyId),
     };
     return cachedKeys;
 }
@@ -73,7 +71,7 @@ async function getDerivedKeys(env: Env): Promise<{ publicKey: string; gatewayKey
 // ---------------------------------------------------------------------------
 
 // API パス一覧
-const API_PATHS = new Set(['/vapid-public-key', '/gateway-key-id', '/push']);
+const API_PATHS = new Set(['/gateway-info', '/vapid-public-key', '/gateway-key-id', '/push', '/test-roundtrip']);
 
 export default {
     async fetch(request: Request, env: Env): Promise<Response> {
@@ -99,16 +97,59 @@ export default {
 
         const keys = await getDerivedKeys(env);
 
+        if (request.method === 'GET' && url.pathname === '/gateway-info') {
+            return corsResponse(json({ publicKey: keys.publicKey, keyId: keys.gatewayKeyId }), 200, origin, selfOrigin);
+        }
+
+        // 後方互換
         if (request.method === 'GET' && url.pathname === '/vapid-public-key') {
             return corsResponse(json({ publicKey: keys.publicKey }), 200, origin, selfOrigin);
         }
-
         if (request.method === 'GET' && url.pathname === '/gateway-key-id') {
             return corsResponse(json({ keyId: keys.gatewayKeyId }), 200, origin, selfOrigin);
         }
 
         if (request.method === 'POST' && url.pathname === '/push') {
             return handlePush(request, env, keys, origin, selfOrigin);
+        }
+
+        // デバッグ用: encode → decode ラウンドトリップテスト
+        if (request.method === 'GET' && url.pathname === '/test-roundtrip') {
+            try {
+                const testSub = JSON.stringify({
+                    endpoint: 'https://example.com/push/test123',
+                    p256dh: keys.publicKey, // ダミー: 実際の p256dh の代わりに公開鍵を使用
+                    auth: keys.gatewayKeyId, // ダミー: 8 バイトだが auth は通常 16 バイト
+                });
+                const exp = BigInt(Math.floor(Date.now() / 1000) + 3600);
+
+                console.log('roundtrip encode args:', {
+                    subLen: testSub.length,
+                    keyId: keys.gatewayKeyId,
+                    pubKeyLen: fromBase64Url(keys.publicKey).length,
+                    exp: Number(exp),
+                });
+
+                const bundle = encode_credential_bundle_wasm(
+                    testSub, keys.gatewayKeyId, keys.publicKey, exp,
+                );
+                console.log('roundtrip encoded:', bundle.slice(0, 40) + '...', 'len:', bundle.length);
+
+                const decoded = decode_credential_bundle_wasm(
+                    bundle, keys.gatewayKeyId, env.VAPID_PRIVATE_KEY_D,
+                );
+                console.log('roundtrip decoded:', decoded);
+
+                return corsResponse(json({
+                    ok: true,
+                    encoded_len: bundle.length,
+                    decoded_endpoint: decoded.endpoint,
+                }), 200, origin, selfOrigin);
+            } catch (err) {
+                const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+                console.error('roundtrip failed:', msg);
+                return corsResponse(json({ error: msg }), 500, origin, selfOrigin);
+            }
         }
 
         return corsResponse(json({ error: 'Not Found' }), 404, origin, selfOrigin);
@@ -148,6 +189,16 @@ async function handlePush(
     const ttl = Math.min(body.ttl ?? 60, 86400);
 
     try {
+        // デバッグ: 入力値の確認
+        const bundleBytes = fromBase64Url(body.bundle);
+        console.log('decode inputs:', {
+            bundleLen: bundleBytes.length,
+            bundlePreview: body.bundle.slice(0, 40) + '...',
+            keyId: keys.gatewayKeyId,
+            keyIdLen: fromBase64Url(keys.gatewayKeyId).length,
+            privKeyLen: fromBase64Url(env.VAPID_PRIVATE_KEY_D).length,
+        });
+
         // WASM でバンドルを復号して WebPush サブスクリプション情報を取得
         const decoded = decode_credential_bundle_wasm(
             body.bundle, keys.gatewayKeyId, env.VAPID_PRIVATE_KEY_D,
@@ -164,7 +215,8 @@ async function handlePush(
         return corsResponse(json({ ok: true }), 200, origin, allowedOrigin);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error('Push failed:', message);
+        const stack = err instanceof Error ? err.stack : '';
+        console.error('Push failed:', message, stack);
         return corsResponse(json({ error: message }), 500, origin, allowedOrigin);
     }
 }
@@ -421,7 +473,13 @@ function tlv(tag: number, value: Uint8Array): Uint8Array {
 // ---------------------------------------------------------------------------
 
 function isAllowedOrigin(origin: string, selfOrigin: string): boolean {
-    return origin === selfOrigin;
+    if (origin === selfOrigin) return true;
+    // Origin ヘッダーが無い (同一オリジン GET 等) → 許可
+    if (!origin) return true;
+    // wrangler dev が 0.0.0.0 でバインドするため localhost/127.0.0.1 からのアクセスを許可
+    const localhostRe = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/;
+    if (localhostRe.test(origin) && localhostRe.test(selfOrigin)) return true;
+    return false;
 }
 
 function corsResponse(

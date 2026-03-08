@@ -24,15 +24,12 @@ test.describe('App', () => {
 		await expect(root).not.toBeEmpty({ timeout: 10_000 });
 	});
 
-	test('VAPID public key endpoint returns key', async ({ page }) => {
-		const response = await page.request.get('/vapid-public-key');
-		// Origin ヘッダなしの直アクセスなので 403 (same-origin check)
-		expect(response.status()).toBe(403);
-	});
-
-	test('gateway-key-id endpoint responds', async ({ page }) => {
-		const response = await page.request.get('/gateway-key-id');
-		expect(response.status()).toBe(403);
+	test('gateway-info endpoint returns publicKey and keyId', async ({ page }) => {
+		const response = await page.request.get('/gateway-info');
+		expect(response.status()).toBe(200);
+		const body = await response.json();
+		expect(body).toHaveProperty('publicKey');
+		expect(body).toHaveProperty('keyId');
 	});
 
 	test('service worker script is served', async ({ page }) => {

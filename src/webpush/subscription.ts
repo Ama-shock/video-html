@@ -23,8 +23,8 @@ export async function subscribeToPush(
 
 	if (!sub) {
 		// VAPID 公開鍵を取得
-		const resp = await fetch('/vapid-public-key');
-		if (!resp.ok) throw new Error(`Failed to fetch VAPID public key: ${resp.status}`);
+		const resp = await fetch('/gateway-info');
+		if (!resp.ok) throw new Error(`Failed to fetch gateway info: ${resp.status}`);
 		const { publicKey } = (await resp.json()) as { publicKey: string };
 
 		// Notification 許可

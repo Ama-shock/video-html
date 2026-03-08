@@ -25,34 +25,37 @@ document.head.appendChild(style);
 
 // wasm-bindgen --target bundler の .wasm をブラウザで動かすプラグイン。
 // top-level await (ESM) を使い、fetch で WASM をコンパイル・インスタンス化する。
+// wasm-bindgen --target bundler の WASM をブラウザで動かすプラグイン。
+// パッケージの sideEffects:false により tree-shake されるため、
+// パッケージ import 自体をフックして初期化コードに置き換える。
 const wasmPlugin: Plugin = {
 	name: 'wasm-bundler',
 	setup(build) {
-		build.onResolve({ filter: /\.wasm$/ }, args => ({
-			path: path.resolve(args.resolveDir, args.path),
-			namespace: 'wasm-module',
+		// @ama-shock/non-resident-vapid の import を丸ごとフック
+		build.onResolve({ filter: /^@ama-shock\/non-resident-vapid$/ }, args => ({
+			path: args.path,
+			namespace: 'nrv-entry',
+			sideEffects: true,
 		}));
 
-		build.onLoad({ filter: /.*/, namespace: 'wasm-module' }, args => {
-			const wasmPath = args.path;
-			const wasmDir = path.dirname(wasmPath);
-			const wasmFileName = path.basename(wasmPath);
-			const bgJsName = wasmFileName.replace(/\.wasm$/, '.js');
-
-			// .wasm.d.ts からエクスポート名を収集（最も信頼性が高い）
-			const dtsContent = readFileSync(wasmPath + '.d.ts', 'utf8');
-			const exportNames = [...dtsContent.matchAll(/^export const (\w+)/gm)].map(m => m[1]);
-			const destructure = exportNames.map(n => `    ${n},`).join('\n');
+		build.onLoad({ filter: /.*/, namespace: 'nrv-entry' }, () => {
+			const pkgDir = path.join('node_modules', '@ama-shock', 'non-resident-vapid', 'pkg');
+			const wasmFileName = 'non_resident_vapid_bg.wasm';
+			const bgJsName = 'non_resident_vapid_bg.js';
+			const wasmPath = path.join(pkgDir, wasmFileName);
 
 			// WASM バイナリを出力ディレクトリにコピー
 			const outdir = build.initialOptions.outdir ?? 'public';
 			mkdirSync(outdir, { recursive: true });
 			copyFileSync(wasmPath, path.join(outdir, wasmFileName));
 
-			// top-level await で WASM を非同期ロード・インスタンス化し、
-			// エクスポートをそのまま名前付きエクスポートとして再公開する
+			// _bg.js のラッパー関数名を収集（公開 API のみ）
+			const bgJsContent = readFileSync(path.join(pkgDir, bgJsName), 'utf8');
+			const publicFns = [...bgJsContent.matchAll(/^export function ((?:encode|decode)\w+)\b/gm)].map(m => m[1]);
+			const reExports = publicFns.map(n => `export const ${n} = bgJs.${n};`).join('\n');
+
 			return {
-				resolveDir: wasmDir,
+				resolveDir: path.resolve(pkgDir),
 				loader: 'js',
 				contents: `
 import * as bgJs from './${bgJsName}';
@@ -60,10 +63,10 @@ const _res = await fetch(new URL('./${wasmFileName}', import.meta.url));
 const _mod = await WebAssembly.compileStreaming(_res);
 const _importNames = [...new Set(WebAssembly.Module.imports(_mod).map(i => i.module))];
 const _importObj = Object.fromEntries(_importNames.map(name => [name, bgJs]));
-const { instance: _inst } = await WebAssembly.instantiate(_mod, _importObj);
-export const {
-${destructure}
-} = _inst.exports;
+const _inst = await WebAssembly.instantiate(_mod, _importObj);
+bgJs.__wbg_set_wasm(_inst.exports);
+if (_inst.exports.__wbindgen_start) _inst.exports.__wbindgen_start();
+${reExports}
 `,
 			};
 		});

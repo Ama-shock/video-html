@@ -14,7 +14,7 @@ export type PushSubscription = {
 	auth: string; // base64url
 };
 
-export type CredentialBundle = Uint8Array;
+export type CredentialBundle = string;
 
 /**
  * WebPush サブスクリプションをクレデンシャルバンドルにエンコードする。
@@ -24,26 +24,38 @@ export type CredentialBundle = Uint8Array;
  * @param keyIdB64  8 バイト鍵 ID (base64url)
  * @param expirationSec  有効期限 Unix タイムスタンプ (秒)
  */
+/**
+ * WebPush サブスクリプションをクレデンシャルバンドルにエンコードする。
+ * base64url 文字列を返す。
+ */
 export async function encodeCredentialBundle(
 	subscription: PushSubscription,
 	gatewayPublicKeyB64: string,
 	keyIdB64: string,
 	expirationSec: number,
-): Promise<CredentialBundle> {
+): Promise<string> {
 	const subscriptionJson = JSON.stringify({
 		endpoint: subscription.endpoint,
 		p256dh: subscription.p256dh,
 		auth: subscription.auth,
 	});
 
-	const b64url = encode_credential_bundle_wasm(
+	console.log('encode inputs:', {
+		subscriptionJson: subscriptionJson.slice(0, 80) + '...',
+		keyIdB64,
+		gatewayPublicKeyB64: gatewayPublicKeyB64.slice(0, 20) + '...',
+		expirationSec,
+	});
+
+	const result = encode_credential_bundle_wasm(
 		subscriptionJson,
 		keyIdB64,
 		gatewayPublicKeyB64,
 		BigInt(expirationSec),
 	);
 
-	return fromBase64Url(b64url);
+	console.log('encode output len:', result.length, 'preview:', result.slice(0, 40) + '...');
+	return result;
 }
 
 export function toBase64Url(bytes: Uint8Array): string {

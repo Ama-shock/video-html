@@ -5,10 +5,9 @@ import type { GuestStatus } from '../../store/hostSlice';
 type Props = {
 	pending: GuestStatus[];
 	guests: GuestStatus[];
-	onAllow: (userId: string, controllerId: number | null) => void;
+	onAllow: (userId: string) => void;
 	onReject: (userId: string) => void;
 	onRemove: (userId: string) => void;
-	onSetController: (userId: string, controllerId: number | null) => void;
 };
 
 function GuestCard({
@@ -17,17 +16,14 @@ function GuestCard({
 	onAllow,
 	onReject,
 	onRemove,
-	onSetController,
 }: {
 	guest: GuestStatus;
 	isPending: boolean;
-	onAllow?: (cid: number | null) => void;
+	onAllow?: () => void;
 	onReject?: () => void;
 	onRemove?: () => void;
-	onSetController?: (cid: number | null) => void;
 }) {
 	const [identiconUrl, setIdenticonUrl] = useState<string | null>(null);
-	const [selectedCid, setSelectedCid] = useState<number | null>(guest.controllerId);
 
 	useEffect(() => {
 		generateIdenticonDataUrl(guest.userId).then(setIdenticonUrl);
@@ -58,34 +54,13 @@ function GuestCard({
 				)}
 			</div>
 
-			<div className="guest-controller">
-				<label>
-					コントローラー
-					<select
-						value={selectedCid ?? ''}
-						onChange={(e) => {
-							const v = e.target.value === '' ? null : Number(e.target.value);
-							setSelectedCid(v);
-							onSetController?.(v);
-						}}
-					>
-						<option value="">なし</option>
-						{[0, 1, 2, 3].map((i) => (
-							<option key={i} value={i}>
-								#{i}
-							</option>
-						))}
-					</select>
-				</label>
-			</div>
-
 			<div className="guest-actions">
 				{isPending ? (
 					<>
 						<button
 							type="button"
 							className="btn btn-primary btn-sm"
-							onClick={() => onAllow?.(selectedCid)}
+							onClick={onAllow}
 						>
 							許可
 						</button>
@@ -109,7 +84,6 @@ export default function GuestList({
 	onAllow,
 	onReject,
 	onRemove,
-	onSetController,
 }: Props) {
 	return (
 		<div className="guest-list">
@@ -121,9 +95,8 @@ export default function GuestList({
 							key={g.userId}
 							guest={g}
 							isPending
-							onAllow={(cid) => onAllow(g.userId, cid)}
+							onAllow={() => onAllow(g.userId)}
 							onReject={() => onReject(g.userId)}
-							onSetController={(cid) => onSetController(g.userId, cid)}
 						/>
 					))}
 				</section>
@@ -138,7 +111,6 @@ export default function GuestList({
 							guest={g}
 							isPending={false}
 							onRemove={() => onRemove(g.userId)}
-							onSetController={(cid) => onSetController(g.userId, cid)}
 						/>
 					))}
 				</section>

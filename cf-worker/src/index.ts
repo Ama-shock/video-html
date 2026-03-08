@@ -16,7 +16,7 @@
  *
  * 公開鍵・鍵IDは秘密鍵から自動導出:
  *   VAPID_PUBLIC_KEY  — 非圧縮公開鍵 (65 bytes) … VAPID Authorization ヘッダ用
- *   GATEWAY_KEY_ID    — 圧縮公開鍵 (33 bytes) … クレデンシャルバンドルの鍵識別子
+ *   GATEWAY_KEY_ID    — 公開鍵先頭 8 バイト … クレデンシャルバンドルの鍵識別子
  */
 
 import { decode_credential_bundle_wasm } from './non-resident-vapid';
@@ -55,15 +55,13 @@ async function getDerivedKeys(env: Env): Promise<{ publicKey: string; gatewayKey
     uncompressed.set(x, 1);
     uncompressed.set(y, 33);
 
-    // 圧縮公開鍵: (0x02 or 0x03) || x (33 bytes)
-    const compressed = new Uint8Array(33);
-    compressed[0] = (y[31] & 1) === 0 ? 0x02 : 0x03;
-    compressed.set(x, 1);
+    // 鍵識別子: 非圧縮公開鍵の先頭 8 バイト
+    const keyId = uncompressed.slice(0, 8);
 
     cachedKeys = {
         d: env.VAPID_PRIVATE_KEY_D,
         publicKey: toBase64Url(uncompressed),
-        gatewayKeyId: toBase64Url(compressed),
+        gatewayKeyId: toBase64Url(keyId),
     };
     return cachedKeys;
 }
@@ -90,10 +88,14 @@ export default {
         const url = new URL(request.url);
         const keys = await getDerivedKeys(env);
 
+        if (request.method === 'GET' && url.pathname === '/gateway-info') {
+            return corsResponse(json({ publicKey: keys.publicKey, keyId: keys.gatewayKeyId }), 200, origin, allowedOrigin);
+        }
+
+        // 後方互換
         if (request.method === 'GET' && url.pathname === '/vapid-public-key') {
             return corsResponse(json({ publicKey: keys.publicKey }), 200, origin, allowedOrigin);
         }
-
         if (request.method === 'GET' && url.pathname === '/gateway-key-id') {
             return corsResponse(json({ keyId: keys.gatewayKeyId }), 200, origin, allowedOrigin);
         }

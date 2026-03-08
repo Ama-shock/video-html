@@ -9,7 +9,6 @@ import {
 	openRoom,
 	rejectGuest,
 	removeGuest,
-	setGuestController,
 	updateGuestConnection,
 } from '../../store/hostSlice';
 import { createRoomKey, fetchGatewayInfo } from '../../webpush/gateway';
@@ -89,15 +88,15 @@ export default function HostMenu() {
 		dispatch(closeRoom());
 	};
 
-	const handleAllowGuest = async (userId: string, controllerId: number | null) => {
-		dispatch(allowGuest({ userId, controllerId }));
+	const handleAllowGuest = async (userId: string) => {
+		dispatch(allowGuest({ userId, controllerId: null }));
 		const pending = pendingRequests.find((g) => g.userId === userId);
 		if (!pending) return;
 		await saveGuest({
 			userId,
 			username: pending.username,
 			allowed: true,
-			controllerId,
+			controllerId: null,
 			lastSeen: new Date().toISOString(),
 		});
 	};
@@ -142,9 +141,6 @@ export default function HostMenu() {
 							hostRtcRef.current?.disconnectGuest(userId);
 							dispatch(removeGuest(userId));
 						}}
-						onSetController={(userId, cid) =>
-							dispatch(setGuestController({ userId, controllerId: cid }))
-						}
 					/>
 				</>
 			)}
