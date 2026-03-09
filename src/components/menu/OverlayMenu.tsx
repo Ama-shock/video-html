@@ -113,10 +113,19 @@ export default function OverlayMenu() {
 				{/* Section content */}
 				<div className="menu-content">
 					{validSection === 'video' && <VideoMenu />}
-					{validSection === 'host' && <HostMenu />}
-					{validSection === 'guest' && <GuestMenu />}
 					{validSection === 'gamepad' && <GamepadMenu />}
 					{validSection === 'identity' && <IdentityMenu />}
+					{/* HostMenu / GuestMenu は SW リスナーや WebRTC 接続を保持するため常にマウント */}
+					{mode === 'host' && (
+						<div style={{ display: validSection === 'host' ? undefined : 'none' }}>
+							<HostMenu />
+						</div>
+					)}
+					{mode === 'guest' && (
+						<div style={{ display: validSection === 'guest' ? undefined : 'none' }}>
+							<GuestMenu />
+						</div>
+					)}
 				</div>
 			</div>
 		</>

@@ -9,24 +9,33 @@ export type GuestProfile = {
 	signature: string; // sign(userId || username) base64url — なりすまし防止
 };
 
-/** ゲスト → ホスト: 入室要求 */
+/** ゲスト → ホスト: 入室要求 (WebPush: SDP + 最小限の識別情報のみ) */
 export type JoinRequest = {
 	type: 'join_request';
-	profile: GuestProfile;
+	/** ゲストの userId（Ed25519 公開鍵 base64url） */
+	userId: string;
 	guestBundle: string; // ゲストの WebPush サブスクリプションのクレデンシャルバンドル (base64url)
 	offerSdp: string; // WebRTC Offer SDP
 };
 
-/** ホスト → ゲスト: 入室承認 + Answer SDP */
+/** ホスト → ゲスト: 入室承認 + Answer SDP (WebPush: SDP のみ) */
 export type JoinAccepted = {
 	type: 'join_accepted';
 	answerSdp: string;
-	controllerAssignment: number | null; // switch-bt-ws コントローラー ID
-	videoQuality?: string; // 'high' | 'medium' | 'low'
-	hostProfile?: {
-		userId: string; // ホストの Ed25519 公開鍵 base64url
-		username: string;
-	};
+};
+
+/** DataChannel 経由でゲストが接続後に送るプロフィール */
+export type GuestIntroduce = {
+	type: 'guest_introduce';
+	profile: GuestProfile;
+};
+
+/** DataChannel 経由でホストが接続後に送る初期情報 */
+export type HostWelcome = {
+	type: 'host_welcome';
+	hostProfile?: { userId: string; username: string };
+	videoQuality?: string;
+	controllerAssignment: number | null;
 };
 
 /** ホスト → ゲスト: 入室拒否 */
@@ -50,7 +59,7 @@ export type ControllerInput = {
 };
 
 /** WebRTC データチャネル経由のホストコマンド (ホスト → ゲスト) */
-export type HostCommand = QualityChangeCommand | GuestListCommand;
+export type HostCommand = QualityChangeCommand | GuestListCommand | HostWelcome;
 
 export type QualityChangeCommand = {
 	type: 'quality_change';

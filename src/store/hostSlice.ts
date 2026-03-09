@@ -102,6 +102,18 @@ const hostSlice = createSlice({
 			const guest = state.guests.find((g) => g.userId === action.payload.userId);
 			if (guest) guest.videoQuality = action.payload.videoQuality;
 		},
+		updateGuestUsername(
+			state,
+			action: PayloadAction<{ userId: string; username: string }>,
+		) {
+			const { userId, username } = action.payload;
+			for (const g of state.guests) {
+				if (g.userId === userId) g.username = username;
+			}
+			for (const g of state.pendingRequests) {
+				if (g.userId === userId) g.username = username;
+			}
+		},
 	},
 });
 
@@ -115,5 +127,6 @@ export const {
 	updateGuestConnection,
 	setGuestController,
 	setGuestVideoQuality,
+	updateGuestUsername,
 } = hostSlice.actions;
 export default hostSlice.reducer;

@@ -1,14 +1,13 @@
 /**
  * WebRTC ホスト実装。
  *
- * - ゲストからの JoinRequest を受け取って PeerConnection を作成
- * - MediaStream を送信し、データチャネルでコントローラー入力を受け取る
- * - Answer SDP をゲストの WebPush バンドル宛てに送信する
+ * Phase 1: DataChannel のみの SDP を WebPush で交換して接続確立
+ * Phase 2: DC 経由でメディア offer/answer を再ネゴシエーション
  */
 
 import { pushToBundle } from '../webpush/gateway';
 import { type ConnectionStats, getConnectionStats } from './stats';
-import type { ControllerInput, GuestListCommand, HostCommand, JoinAccepted, JoinRejected, JoinRequest, PeerInfo } from './types';
+import type { ControllerInput, GuestListCommand, GuestProfile, HostCommand, HostWelcome, JoinAccepted, JoinRejected, JoinRequest, PeerInfo } from './types';
 
 const RTC_CONFIG: RTCConfiguration = {
 	iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
@@ -31,11 +30,15 @@ export type GuestSession = {
 	/** ホストが作成したデータチャネル (コマンド送信用) */
 	commandChannel: RTCDataChannel | null;
 	connectionState: RTCPeerConnectionState;
+	/** Phase 2 メディアネゴシエーション済みか */
+	mediaReady: boolean;
+	videoQuality?: string;
 };
 
 type HostCallbacks = {
 	onControllerInput?: (userId: string, input: ControllerInput) => void;
 	onGuestStateChange?: (userId: string, state: RTCPeerConnectionState) => void;
+	onGuestProfile?: (userId: string, profile: GuestProfile) => void;
 };
 
 export class HostWebRTC {
@@ -49,18 +52,15 @@ export class HostWebRTC {
 
 	setLocalStream(stream: MediaStream): void {
 		this.localStream = stream;
-		// 既存セッションにもトラックを追加
-		for (const [, session] of this.sessions) {
-			const senders = session.pc.getSenders();
-			for (const track of stream.getTracks()) {
-				if (!senders.find((s) => s.track?.kind === track.kind)) {
-					session.pc.addTrack(track, stream);
-				}
+		// 既存のメディア未送信セッションにもトラックを追加して再ネゴシエーション
+		for (const [userId, session] of this.sessions) {
+			if (!session.mediaReady && session.commandChannel?.readyState === 'open') {
+				this.startMediaNegotiation(userId);
 			}
 		}
 	}
 
-	/** ホストプロフィール（JoinAccepted に含める） */
+	/** ホストプロフィール */
 	private hostProfile: { userId: string; username: string } | null = null;
 
 	setHostProfile(userId: string, username: string): void {
@@ -68,13 +68,12 @@ export class HostWebRTC {
 	}
 
 	/**
-	 * ゲストの JoinRequest を処理して Answer SDP を送り返す。
+	 * Phase 1: DataChannel のみの Answer を WebPush で返す。
+	 * メディアトラックはまだ追加しない。
 	 */
 	async handleJoinRequest(req: JoinRequest, videoQuality?: string): Promise<void> {
-		const { profile, guestBundle, offerSdp } = req;
-		const { userId, username } = profile;
+		const { userId, guestBundle, offerSdp } = req;
 
-		// 既存セッションがあれば閉じる
 		this.disconnectGuest(userId);
 
 		const pc = new RTCPeerConnection(RTC_CONFIG);
@@ -82,7 +81,35 @@ export class HostWebRTC {
 		// ホスト→ゲスト用コマンドチャネル作成
 		const commandChannel = pc.createDataChannel('host_command', { ordered: true });
 
-		// ゲストが作成したデータチャネル受け取り (controller input)
+		// DC open → HostWelcome 送信 + Phase 2 メディアネゴシエーション開始
+		commandChannel.onopen = () => {
+			const welcome: HostWelcome = {
+				type: 'host_welcome',
+				hostProfile: this.hostProfile ?? undefined,
+				videoQuality,
+				controllerAssignment: null,
+			};
+			commandChannel.send(JSON.stringify(welcome));
+			// メディアストリームがあれば Phase 2 開始
+			if (this.localStream) {
+				this.startMediaNegotiation(userId);
+			}
+		};
+
+		// DC 経由でゲストからのメッセージ受信
+		commandChannel.onmessage = (msgEv) => {
+			try {
+				const msg = JSON.parse(msgEv.data as string);
+				// Phase 2: ゲストからの media answer
+				if (msg.type === 'media_answer') {
+					this.handleMediaAnswer(userId, msg.sdp as string);
+				}
+			} catch {
+				/* ignore */
+			}
+		};
+
+		// ゲストが作成したデータチャネル受け取り
 		pc.ondatachannel = (ev) => {
 			const dc = ev.channel;
 			dc.onmessage = (msgEv) => {
@@ -91,6 +118,12 @@ export class HostWebRTC {
 					if (msg.type === 'guest_disconnect') {
 						this.callbacks.onGuestStateChange?.(userId, 'closed');
 						this.disconnectGuest(userId);
+						return;
+					}
+					if (msg.type === 'guest_introduce') {
+						const session = this.sessions.get(userId);
+						if (session) session.username = msg.profile.username;
+						this.callbacks.onGuestProfile?.(userId, msg.profile);
 						return;
 					}
 					this.callbacks.onControllerInput?.(userId, msg as ControllerInput);
@@ -103,7 +136,6 @@ export class HostWebRTC {
 		};
 
 		pc.onconnectionstatechange = () => {
-			// sessions に存在しなければ既に切断処理済み（再入防止）
 			const session = this.sessions.get(userId);
 			if (!session) return;
 			session.connectionState = pc.connectionState;
@@ -113,60 +145,85 @@ export class HostWebRTC {
 			}
 		};
 
-		// ローカルストリームを追加
-		if (this.localStream) {
-			for (const track of this.localStream.getTracks()) {
-				pc.addTrack(track, this.localStream);
-			}
-		}
-
+		// Phase 1: メディアトラックは追加しない（SDP を小さく保つ）
 		const session: GuestSession = {
 			userId,
-			username,
+			username: '',
 			guestBundle,
 			pc,
 			controllerChannel: null,
 			commandChannel,
 			connectionState: 'new',
+			mediaReady: false,
+			videoQuality,
 		};
 		this.sessions.set(userId, session);
 
-		// Offer を受け取って Answer を生成
+		// Phase 1 の Offer/Answer
 		await pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
 		const answer = await pc.createAnswer();
 		await pc.setLocalDescription(answer);
 
-		// ICE gathering を待つ
 		await waitForIceGathering(pc);
-
-		// 初期ビットレート制限を適用
-		if (videoQuality) {
-			await applyBitrateLimit(pc, videoQuality);
-		}
 
 		const answerMsg: JoinAccepted = {
 			type: 'join_accepted',
 			answerSdp: pc.localDescription?.sdp ?? '',
-			controllerAssignment: null,
-			videoQuality,
-			hostProfile: this.hostProfile ?? undefined,
 		};
 
 		await pushToBundle(guestBundle, answerMsg, 60);
 	}
 
 	/**
-	 * ゲストの映像品質を変更する。
-	 * ビットレート制限を適用し、データチャネルでゲストに通知する。
+	 * Phase 2: メディアトラックを追加して DC 経由で再ネゴシエーション。
 	 */
+	private async startMediaNegotiation(userId: string): Promise<void> {
+		const session = this.sessions.get(userId);
+		if (!session || !this.localStream) return;
+		if (session.mediaReady) return;
+
+		const pc = session.pc;
+		const stream = this.localStream;
+
+		// トラック追加
+		const senders = pc.getSenders();
+		for (const track of stream.getTracks()) {
+			if (!senders.find((s) => s.track?.kind === track.kind)) {
+				pc.addTrack(track, stream);
+			}
+		}
+
+		// 新しい Offer を生成して DC 経由で送信
+		const offer = await pc.createOffer();
+		await pc.setLocalDescription(offer);
+
+		if (session.commandChannel?.readyState === 'open') {
+			session.commandChannel.send(JSON.stringify({
+				type: 'media_offer',
+				sdp: pc.localDescription?.sdp ?? '',
+			}));
+		}
+	}
+
+	/**
+	 * Phase 2: ゲストからのメディア answer を処理。
+	 */
+	private async handleMediaAnswer(userId: string, sdp: string): Promise<void> {
+		const session = this.sessions.get(userId);
+		if (!session) return;
+		await session.pc.setRemoteDescription({ type: 'answer', sdp });
+		session.mediaReady = true;
+
+		// ビットレート制限
+		if (session.videoQuality) {
+			await applyBitrateLimit(session.pc, session.videoQuality);
+		}
+	}
+
 	async setVideoQuality(userId: string, quality: string): Promise<void> {
 		const session = this.sessions.get(userId);
 		if (!session) return;
-
-		// ビットレート制限を適用
 		await applyBitrateLimit(session.pc, quality);
-
-		// ゲストに通知
 		const cmd: HostCommand = { type: 'quality_change', videoQuality: quality };
 		if (session.commandChannel?.readyState === 'open') {
 			session.commandChannel.send(JSON.stringify(cmd));
@@ -181,9 +238,7 @@ export class HostWebRTC {
 	disconnectGuest(userId: string): void {
 		const session = this.sessions.get(userId);
 		if (session) {
-			// Map から先に削除して onconnectionstatechange の再入を防ぐ
 			this.sessions.delete(userId);
-			// 切断通知をデータチャネルで送信（相手側の即時検知用）
 			if (session.commandChannel?.readyState === 'open') {
 				try {
 					session.commandChannel.send(JSON.stringify({ type: 'host_disconnect' }));
@@ -191,23 +246,17 @@ export class HostWebRTC {
 					/* ignore */
 				}
 			}
-			// send() 後にメッセージが届く時間を確保してから close()
 			setTimeout(() => session.pc.close(), 100);
 		}
 	}
 
 	disconnectAll(): void {
-		// イテレーション中の delete を避けるためキー一覧を先にコピー
 		const userIds = [...this.sessions.keys()];
 		for (const userId of userIds) {
 			this.disconnectGuest(userId);
 		}
 	}
 
-	/**
-	 * 全ゲストに現在のゲスト一覧を送信する。
-	 * 各ゲストには自分以外のゲスト情報が届く。
-	 */
 	broadcastGuestList(): void {
 		const allGuests: PeerInfo[] = [];
 		for (const session of this.sessions.values()) {
@@ -240,16 +289,11 @@ export class HostWebRTC {
 	}
 }
 
-/**
- * RTCRtpSender の映像ビットレートを制限する。
- */
 async function applyBitrateLimit(pc: RTCPeerConnection, quality: string): Promise<void> {
 	const maxBitrate = QUALITY_BITRATE[quality];
 	if (!maxBitrate) return;
-
 	const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
 	if (!sender) return;
-
 	const params = sender.getParameters();
 	if (!params.encodings || params.encodings.length === 0) {
 		params.encodings = [{}];
@@ -270,7 +314,6 @@ function waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
 			}
 		};
 		pc.addEventListener('icegatheringstatechange', check);
-		// タイムアウト: 5秒待っても完了しなければ強制終了
 		setTimeout(resolve, 5000);
 	});
 }

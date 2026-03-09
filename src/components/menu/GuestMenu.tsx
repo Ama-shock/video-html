@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { unlockAudio } from '../../audio/unlock';
 import { getOrCreateIdentity } from '../../identity';
 import { generateIdenticonDataUrl } from '../../identity/identicon';
 import type { AppDispatch, RootState } from '../../store';
@@ -7,6 +8,7 @@ import {
 	reset,
 	setControllerAssignment,
 	setError,
+	setHostProfile,
 	setPeers,
 	setRoomKey,
 	setStatus,
@@ -80,6 +82,8 @@ export default function GuestMenu() {
 	}, [hostProfile?.userId]);
 
 	const handleJoin = async () => {
+		// ユーザー操作コンテキストで音声出力を許可（autoplay policy 対策）
+		unlockAudio();
 		const key = inputKey.trim();
 		if (!validateRoomKeyFormat(key)) {
 			dispatch(setError('無効な部屋鍵です'));
@@ -106,7 +110,12 @@ export default function GuestMenu() {
 					dispatch(setControllerAssignment(cid));
 				},
 				onHostCommand: (cmd) => {
-					if (cmd.type === 'quality_change' && typeof cmd.videoQuality === 'string') {
+					if (cmd.type === 'host_welcome') {
+						const hp = cmd.hostProfile as { userId: string; username: string } | undefined;
+						if (hp) dispatch(setHostProfile(hp));
+						if (typeof cmd.videoQuality === 'string') dispatch(setVideoQuality(cmd.videoQuality));
+						if (typeof cmd.controllerAssignment === 'number') dispatch(setControllerAssignment(cmd.controllerAssignment));
+					} else if (cmd.type === 'quality_change' && typeof cmd.videoQuality === 'string') {
 						dispatch(setVideoQuality(cmd.videoQuality));
 					} else if (cmd.type === 'guest_list' && Array.isArray(cmd.guests)) {
 						dispatch(setPeers(cmd.guests as { userId: string; username: string }[]));

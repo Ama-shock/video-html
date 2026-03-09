@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { unlockAudio } from '../../audio/unlock';
 import type { AppDispatch, RootState } from '../../store';
 import { setStreaming } from '../../store/appSlice';
 
@@ -24,15 +25,27 @@ export default function VideoBackground() {
 			if (streamRef.current) {
 				streamRef.current.getTracks().forEach((t) => t.stop());
 			}
+			// 既存の再生を止めてからソースを差し替える（AbortError 防止）
+			if (videoRef.current) {
+				videoRef.current.pause();
+				videoRef.current.srcObject = null;
+			}
+			// ユーザー操作コンテキストで AudioContext を resume（音声許可取得）
+			unlockAudio();
 			setCaptureError(null);
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({
-					video: { deviceId: vidId ?? undefined, width: videoWidth, height: videoHeight },
+					video: {
+						deviceId: vidId ? { exact: vidId } : undefined,
+						width: videoWidth,
+						height: videoHeight,
+					},
 					audio: {
-						deviceId: audId ?? undefined,
+						deviceId: audId ? { exact: audId } : undefined,
 						echoCancellation: false,
 						noiseSuppression: false,
-					},
+						suppressLocalAudioPlayback: false,
+					} as MediaTrackConstraints,
 				});
 				streamRef.current = stream;
 				if (videoRef.current) {
@@ -71,7 +84,7 @@ export default function VideoBackground() {
 	return (
 		<div className="video-bg">
 			{/* biome-ignore lint/a11y/useMediaCaption: live stream */}
-			<video ref={videoRef} autoPlay={false} controls={false} playsInline muted />
+			<video ref={videoRef} autoPlay={false} controls={false} playsInline />
 			{!started && (
 				<div className="video-bg-prompt">
 					<button

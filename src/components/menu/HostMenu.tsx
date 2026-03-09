@@ -11,6 +11,7 @@ import {
 	removeGuest,
 	setGuestVideoQuality,
 	updateGuestConnection,
+	updateGuestUsername,
 } from '../../store/hostSlice';
 import { createRoomKey, fetchGatewayInfo, pushToBundle } from '../../webpush/gateway';
 import { subscribeToPush } from '../../webpush/subscription';
@@ -52,6 +53,7 @@ export default function HostMenu() {
 	const pendingRequests = useSelector((s: RootState) => s.host.pendingRequests);
 	const myPublicKey = useSelector((s: RootState) => s.identity.publicKeyB64);
 	const myUsername = useSelector((s: RootState) => s.identity.username);
+	const streaming = useSelector((s: RootState) => s.app.streaming);
 
 	const [error, setError] = useState<string | null>(null);
 	const [renewing, setRenewing] = useState(false);
@@ -60,6 +62,16 @@ export default function HostMenu() {
 	const hostRtcRef = useRef<HostWebRTC | null>(null);
 	const roomStatusRef = useRef(roomStatus);
 	roomStatusRef.current = roomStatus;
+
+	// キャプチャ開始/変更時にストリームを HostWebRTC に渡す
+	useEffect(() => {
+		if (!streaming || !hostRtcRef.current) return;
+		const vc = (window as any).__vidcapt;
+		const stream = vc?.streamRef?.current as MediaStream | undefined;
+		if (stream) {
+			hostRtcRef.current.setLocalStream(stream);
+		}
+	}, [streaming]);
 
 	// 有効期限カウントダウン（30秒ごと更新）
 	useEffect(() => {
@@ -87,18 +99,18 @@ export default function HostMenu() {
 				}
 				dispatch(
 					addPendingGuest({
-						userId: req.profile.userId,
-						username: req.profile.username,
+						userId: req.userId,
+						username: '', // プロフィールは DataChannel 経由で後から届く
 						connectionState: 'new',
 						allowed: false,
 						controllerId: null,
 						videoQuality: 'high',
 					}),
 				);
-				const existing = await loadGuest(req.profile.userId);
+				const existing = await loadGuest(req.userId);
 				if (existing?.allowed) {
 					await hostRtcRef.current?.handleJoinRequest(req, 'high');
-					dispatch(allowGuest({ userId: req.profile.userId, controllerId: existing.controllerId }));
+					dispatch(allowGuest({ userId: req.userId, controllerId: existing.controllerId }));
 				}
 			}
 		};
@@ -140,8 +152,16 @@ export default function HostMenu() {
 						// TODO: switch-bt-ws へ転送
 					}
 				},
+				onGuestProfile: (userId, profile) => {
+					dispatch(updateGuestUsername({ userId, username: profile.username }));
+				},
 			});
 			if (myPublicKey) rtc.setHostProfile(myPublicKey, myUsername);
+			// キャプチャ済みのストリームがあれば渡す
+			const vc = (window as any).__vidcapt;
+			if (vc?.streamRef?.current) {
+				rtc.setLocalStream(vc.streamRef.current);
+			}
 			hostRtcRef.current = rtc;
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
