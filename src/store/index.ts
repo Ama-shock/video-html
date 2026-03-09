@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 import appReducer from './appSlice';
+import dongleReducer from './dongleSlice';
 import gamepadReducer from './gamepadSlice';
 import guestReducer from './guestSlice';
 import hostReducer from './hostSlice';
@@ -12,6 +13,7 @@ export const store = configureStore({
 		host: hostReducer,
 		guest: guestReducer,
 		gamepad: gamepadReducer,
+		dongle: dongleReducer,
 	},
 	middleware: (getDefaultMiddleware) =>
 		getDefaultMiddleware({

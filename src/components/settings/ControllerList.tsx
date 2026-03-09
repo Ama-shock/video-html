@@ -1,173 +1,118 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store';
-
-type BtDevice = {
-	vid: string;
-	pid: string;
-	description: string;
-	driver: string;
-	instance: number;
-};
-
-type Controller = {
-	id: number;
-	vid: string;
-	pid: string;
-	instance: number;
-	paired: boolean;
-	rumble: boolean;
-};
+import {
+	disconnectDongle,
+	fetchDongleData,
+	installWinUsbDriver,
+	markDongleAsKnown,
+	reconnectDongle,
+	restoreStandardDriver,
+	startPairing,
+} from '../../switchBtWs/dongleService';
+import type { BtDevice, Controller } from '../../switchBtWs/types';
+import { controllerPlayerMap, dongleKey, isBthUsb, isWinUsb } from '../../switchBtWs/types';
 
 /** WinUSB デバイス + コントローラー情報を結合した行 */
 type WinUsbRow = {
 	device: BtDevice;
 	controller: Controller | null;
+	isKnown: boolean;
 };
-
-function isWinUsb(driver: string): boolean {
-	return /^winusb$/i.test(driver);
-}
-function isBthUsb(driver: string): boolean {
-	return /^(bthusb|bthenum)/i.test(driver);
-}
 
 export default function ControllerList() {
 	const wsPort = useSelector((s: RootState) => s.app.switchBtWsPort);
 	const apiBase = `http://localhost:${wsPort}`;
 
-	const [controllers, setControllers] = useState<Controller[]>([]);
-	const [devices, setDevices] = useState<BtDevice[]>([]);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const devices = useSelector((s: RootState) => s.dongle.devices);
+	const controllers = useSelector((s: RootState) => s.dongle.controllers);
+	const knownDongles = useSelector((s: RootState) => s.dongle.knownDongles);
+	const dongleStatuses = useSelector((s: RootState) => s.dongle.dongleStatuses);
+	const loading = useSelector((s: RootState) => s.dongle.loading);
+	const error = useSelector((s: RootState) => s.dongle.error);
+	const version = useSelector((s: RootState) => s.dongle.version);
+	const linkKeysAvailable = useSelector((s: RootState) => s.dongle.linkKeysAvailable);
+
 	const [driverBusy, setDriverBusy] = useState(false);
-	const autoConnectedRef = useRef(false);
-
-	const fetchData = useCallback(async () => {
-		setLoading(true);
-		setError(null);
-		try {
-			const [ctrlResp, devResp] = await Promise.all([
-				fetch(`${apiBase}/api/controllers`),
-				fetch(`${apiBase}/api/driver/list`),
-			]);
-			if (ctrlResp.ok) setControllers(await ctrlResp.json());
-			if (devResp.ok) setDevices(await devResp.json());
-		} catch (_err) {
-			setError('switch-bt-ws に接続できません。サーバーが起動しているか確認してください。');
-		} finally {
-			setLoading(false);
-		}
-	}, [apiBase]);
-
-	useEffect(() => {
-		fetchData();
-	}, [fetchData]);
-
-	const addController = useCallback(async (vid: string, pid: string, instance: number) => {
-		try {
-			const resp = await fetch(`${apiBase}/api/controllers`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ vid: parseInt(vid, 16), pid: parseInt(pid, 16), instance }),
-			});
-			if (resp.ok) await fetchData();
-		} catch {
-			setError('コントローラーの追加に失敗しました');
-		}
-	}, [apiBase, fetchData]);
-
-	const removeController = async (id: number) => {
-		try {
-			await fetch(`${apiBase}/api/controllers/${id}`, { method: 'DELETE' });
-			await fetchData();
-		} catch {
-			setError('コントローラーの削除に失敗しました');
-		}
-	};
-
-	const installWinUsb = async (vid: string, pid: string) => {
-		const ok = window.confirm(
-			'ドライバを切り替えると、このドングルは通常の Bluetooth デバイスとして利用できなくなります。\n' +
-			'BTStack 専用ドングルとして使用する場合のみ続行してください。\n\n' +
-			'続行しますか？',
-		);
-		if (!ok) return;
-		setDriverBusy(true);
-		try {
-			const resp = await fetch(`${apiBase}/api/driver/install`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ vid: parseInt(vid, 16), pid: parseInt(pid, 16) }),
-			});
-			const result = (await resp.json()) as { message?: string; error?: string };
-			alert(result.message ?? result.error);
-			await fetchData();
-		} catch {
-			setError('ドライバのインストールに失敗しました');
-		} finally {
-			setDriverBusy(false);
-		}
-	};
-
-	const restoreDriver = async (vid: string, pid: string) => {
-		setDriverBusy(true);
-		try {
-			const resp = await fetch(`${apiBase}/api/driver/restore`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ vid: parseInt(vid, 16), pid: parseInt(pid, 16) }),
-			});
-			const result = (await resp.json()) as { message?: string; error?: string };
-			alert(result.message ?? result.error);
-			await fetchData();
-		} catch {
-			setError('ドライバの復元に失敗しました');
-		} finally {
-			setDriverBusy(false);
-		}
-	};
+	const [actionBusy, setActionBusy] = useState<string | null>(null);
 
 	// --- デバイスを3カテゴリに分類 ---
 	const winUsbDevices: WinUsbRow[] = devices
 		.filter((d) => isWinUsb(d.driver))
 		.map((d) => ({
 			device: d,
-			controller: controllers.find(
-				(c) => c.vid === d.vid && c.pid === d.pid && c.instance === d.instance,
-			) ?? null,
+			controller:
+				controllers.find((c) => c.vid === d.vid && c.pid === d.pid && c.instance === d.instance) ??
+				null,
+			isKnown: knownDongles.some(
+				(k) => k.vid === d.vid && k.pid === d.pid && k.instance === d.instance,
+			),
 		}));
 
 	const bthUsbDevices = devices.filter((d) => isBthUsb(d.driver));
 	const otherDevices = devices.filter((d) => !isWinUsb(d.driver) && !isBthUsb(d.driver));
 
-	// 登録されているがデバイス一覧に無いコントローラー（抜かれた等）
 	const orphanControllers = controllers.filter(
 		(c) => !winUsbDevices.some((w) => w.controller?.id === c.id),
 	);
 
-	// --- 初回自動接続: WinUSB デバイスで未登録のものを自動追加 ---
-	useEffect(() => {
-		if (autoConnectedRef.current) return;
-		if (devices.length === 0) return;
-		const unregistered = devices.filter(
-			(d) => isWinUsb(d.driver) && !controllers.some(
-				(c) => c.vid === d.vid && c.pid === d.pid && c.instance === d.instance,
-			),
-		);
-		if (unregistered.length > 0) {
-			autoConnectedRef.current = true;
-			for (const d of unregistered) {
-				addController(d.vid, d.pid, d.instance);
-			}
-		} else if (controllers.length > 0 || devices.some((d) => isWinUsb(d.driver))) {
-			// 既に全て登録済み
-			autoConnectedRef.current = true;
+	// コントローラー ID → P番号
+	const playerMap = controllerPlayerMap(controllers);
+
+	// --- アクション ---
+	const handleReconnect = async (device: BtDevice) => {
+		const key = dongleKey(device.vid, device.pid, device.instance);
+		setActionBusy(key);
+		await reconnectDongle(apiBase, device);
+		setActionBusy(null);
+	};
+
+	const handlePairing = async (device: BtDevice) => {
+		const key = dongleKey(device.vid, device.pid, device.instance);
+		setActionBusy(key);
+		await startPairing(apiBase, device);
+		setActionBusy(null);
+	};
+
+	const handleDisconnect = async (controllerId: number, device?: BtDevice) => {
+		if (device) {
+			await markDongleAsKnown(device);
 		}
-	}, [devices, controllers, addController]);
+		const key = device
+			? dongleKey(device.vid, device.pid, device.instance)
+			: `ctrl-${controllerId}`;
+		setActionBusy(key);
+		await disconnectDongle(apiBase, controllerId);
+		setActionBusy(null);
+	};
+
+	const handleRestoreDriver = async (vid: string, pid: string) => {
+		setDriverBusy(true);
+		const msg = await restoreStandardDriver(apiBase, vid, pid);
+		alert(msg);
+		await fetchDongleData(apiBase);
+		setDriverBusy(false);
+	};
+
+	const handleInstallWinUsb = async (vid: string, pid: string) => {
+		const ok = window.confirm(
+			'ドライバを切り替えると、このドングルは通常の Bluetooth デバイスとして利用できなくなります。\n' +
+				'BTStack 専用ドングルとして使用する場合のみ続行してください。\n\n' +
+				'続行しますか？',
+		);
+		if (!ok) return;
+		setDriverBusy(true);
+		const msg = await installWinUsbDriver(apiBase, vid, pid);
+		alert(msg);
+		await fetchDongleData(apiBase);
+		setDriverBusy(false);
+	};
+
+	const handleRefresh = () => fetchDongleData(apiBase);
 
 	return (
 		<div className="controller-list">
+			{version && <div className="version-label">switch-bt-ws v{version}</div>}
 			{error && <div className="error-msg">{error}</div>}
 
 			<div className="section-header">
@@ -175,7 +120,7 @@ export default function ControllerList() {
 				<button
 					type="button"
 					className="btn btn-secondary btn-sm"
-					onClick={fetchData}
+					onClick={handleRefresh}
 					disabled={loading}
 				>
 					{loading ? '更新中…' : '更新'}
@@ -186,92 +131,112 @@ export default function ControllerList() {
 				<p className="empty-msg">BT ドングルが検出されていません</p>
 			)}
 
-			{/* ===== 汎用ドライバ (WinUSB) ===== */}
+			{/* ===== 汎用USBドライバ (WinUSB) ===== */}
 			{(winUsbDevices.length > 0 || orphanControllers.length > 0) && (
 				<div className="dongle-category">
-					<h5 className="dongle-category-label category-winusb">汎用ドライバ</h5>
-					<table className="device-table">
-						<thead>
-							<tr>
-								<th>VID:PID</th>
-								<th>説明</th>
-								<th>ドライバ</th>
-								<th>状態</th>
-								<th>操作</th>
-							</tr>
-						</thead>
-						<tbody>
-							{winUsbDevices.map((row, i) => (
-								<tr key={`w-${i}`}>
-									<td className="mono">{row.device.vid}:{row.device.pid}</td>
-									<td>{row.device.description}</td>
-									<td>{row.device.driver}</td>
-									<td>
-										{row.controller ? (
-											<span className={`status-badge ${row.controller.paired ? 'paired' : 'waiting'}`}>
-												{row.controller.paired ? '接続中' : '待機中'}
-											</span>
-										) : (
-											<span className="status-badge offline">未接続</span>
-										)}
-									</td>
-									<td className="action-cell">
-										{row.controller ? (
+					<h5 className="dongle-category-label category-winusb">汎用USBドライバ</h5>
+					<div className="dongle-card-list">
+						{winUsbDevices.map((row) => {
+							const key = dongleKey(row.device.vid, row.device.pid, row.device.instance);
+							const status = dongleStatuses[key] ?? 'disconnected';
+							const busy = actionBusy === key;
+							// コントローラーが存在 = サーバー側に接続オブジェクトがある
+							const hasController = row.controller != null;
+
+							const playerNum = row.controller ? playerMap.get(row.controller.id) : null;
+
+							return (
+								<div key={key} className="dongle-card">
+									<div className="dongle-card-row">
+										{playerNum && <span className="player-badge">{`P${playerNum}`}</span>}
+										<span className="mono">
+											{row.device.vid}:{row.device.pid}
+										</span>
+										<span className="dongle-desc">{row.device.description}</span>
+										<DongleStatusBadge
+											status={status}
+											paired={row.controller?.paired ?? false}
+											syncing={row.controller?.syncing ?? false}
+										/>
+									</div>
+									<div className="dongle-card-actions">
+										{hasController ? (
 											<button
 												type="button"
 												className="btn btn-danger btn-sm"
-												onClick={() => removeController(row.controller!.id)}
+												disabled={busy}
+												onClick={() => {
+													if (row.controller) handleDisconnect(row.controller.id, row.device);
+												}}
 											>
 												切断
 											</button>
 										) : (
-											<button
-												type="button"
-												className="btn btn-primary btn-sm"
-												onClick={() => addController(row.device.vid, row.device.pid, row.device.instance)}
-											>
-												接続
-											</button>
+											<>
+												{row.isKnown && linkKeysAvailable[key] && (
+													<button
+														type="button"
+														className="btn btn-primary btn-sm"
+														disabled={busy}
+														onClick={() => handleReconnect(row.device)}
+													>
+														再接続
+													</button>
+												)}
+												<button
+													type="button"
+													className="btn btn-warning btn-sm"
+													disabled={busy}
+													onClick={() => handlePairing(row.device)}
+												>
+													ペアリング
+												</button>
+												<button
+													type="button"
+													className="btn btn-secondary btn-sm"
+													disabled={busy || driverBusy}
+													onClick={() => handleRestoreDriver(row.device.vid, row.device.pid)}
+												>
+													ドライバ復旧
+												</button>
+											</>
 										)}
-										<button
-											type="button"
-											className="btn btn-secondary btn-sm"
-											onClick={() => restoreDriver(row.device.vid, row.device.pid)}
-											disabled={driverBusy}
-										>
-											標準ドライバに戻す
-										</button>
-									</td>
-								</tr>
-							))}
-							{orphanControllers.map((c) => (
-								<tr key={`o-${c.id}`} className="orphan-row">
-									<td className="mono">{c.vid}:{c.pid}</td>
-									<td className="text-dim">（デバイス未検出）</td>
-									<td>—</td>
-									<td>
+									</div>
+								</div>
+							);
+						})}
+						{orphanControllers.map((c) => {
+							const pNum = playerMap.get(c.id);
+							return (
+								<div key={`o-${c.id}`} className="dongle-card orphan-row">
+									<div className="dongle-card-row">
+										{pNum && <span className="player-badge">{`P${pNum}`}</span>}
+										<span className="mono">
+											{c.vid}:{c.pid}
+										</span>
+										<span className="dongle-desc text-dim">（デバイス未検出）</span>
 										<span className="status-badge offline">不明</span>
-									</td>
-									<td className="action-cell">
+									</div>
+									<div className="dongle-card-actions">
 										<button
 											type="button"
 											className="btn btn-danger btn-sm"
-											onClick={() => removeController(c.id)}
+											onClick={() => handleDisconnect(c.id)}
 										>
 											切断
 										</button>
-									</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
+									</div>
+								</div>
+							);
+						})}
+					</div>
 				</div>
 			)}
 
 			{/* ===== OS 標準ドライバ (BTHUSB) ===== */}
 			{bthUsbDevices.length > 0 && (
 				<div className="dongle-category">
-					<h5 className="dongle-category-label category-bthusb">OS 標準ドライバ</h5>
+					<h5 className="dongle-category-label category-bthusb">OS標準BlueToothドライバ</h5>
 					<table className="device-table">
 						<thead>
 							<tr>
@@ -282,16 +247,18 @@ export default function ControllerList() {
 							</tr>
 						</thead>
 						<tbody>
-							{bthUsbDevices.map((d, i) => (
-								<tr key={`b-${i}`}>
-									<td className="mono">{d.vid}:{d.pid}</td>
+							{bthUsbDevices.map((d) => (
+								<tr key={`${d.vid}:${d.pid}:${d.instance}`}>
+									<td className="mono">
+										{d.vid}:{d.pid}
+									</td>
 									<td>{d.description}</td>
 									<td>{d.driver}</td>
 									<td className="action-cell">
 										<button
 											type="button"
 											className="btn btn-primary btn-sm"
-											onClick={() => installWinUsb(d.vid, d.pid)}
+											onClick={() => handleInstallWinUsb(d.vid, d.pid)}
 											disabled={driverBusy}
 										>
 											BTStack 用に切替
@@ -304,7 +271,7 @@ export default function ControllerList() {
 				</div>
 			)}
 
-			{/* ===== 非対応 (その他のドライバ) ===== */}
+			{/* ===== 非対応 ===== */}
 			{otherDevices.length > 0 && (
 				<div className="dongle-category">
 					<h5 className="dongle-category-label category-other">非対応</h5>
@@ -317,9 +284,11 @@ export default function ControllerList() {
 							</tr>
 						</thead>
 						<tbody>
-							{otherDevices.map((d, i) => (
-								<tr key={`o-${i}`} className="disabled-row">
-									<td className="mono">{d.vid}:{d.pid}</td>
+							{otherDevices.map((d) => (
+								<tr key={`${d.vid}:${d.pid}:${d.instance}`} className="disabled-row">
+									<td className="mono">
+										{d.vid}:{d.pid}
+									</td>
 									<td>{d.description}</td>
 									<td>{d.driver}</td>
 								</tr>
@@ -330,4 +299,28 @@ export default function ControllerList() {
 			)}
 		</div>
 	);
+}
+
+function DongleStatusBadge({
+	status,
+	paired,
+	syncing,
+}: {
+	status: string;
+	paired: boolean;
+	syncing: boolean;
+}) {
+	if (paired)
+		return (
+			<>
+				<span className="status-badge paired">接続中</span>
+				<span className="text-dim" style={{ fontSize: 11 }}>
+					リンクキー保持
+				</span>
+			</>
+		);
+	if (syncing) return <span className="status-badge syncing">ペアリング中…</span>;
+	if (status === 'connecting') return <span className="status-badge waiting">接続中…</span>;
+	if (status === 'error') return <span className="status-badge offline">エラー</span>;
+	return <span className="status-badge offline">未接続</span>;
 }

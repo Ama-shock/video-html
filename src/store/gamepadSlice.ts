@@ -1,5 +1,7 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import { defaultKeymap, type KeymapEntry } from '../db/settings';
+import type { KeyboardKeymapEntry } from '../keyboard/index';
+import { defaultKeyboardKeymap } from '../keyboard/keymap';
 
 export type GamepadInfo = {
 	index: number;
@@ -9,14 +11,22 @@ export type GamepadInfo = {
 	relayControllerId: number | null;
 };
 
-type GamepadState = {
+type GamepadSliceState = {
 	gamepads: GamepadInfo[];
 	keymap: KeymapEntry[];
+	keyboardKeymap: KeyboardKeymapEntry[];
+	keyboardConnected: boolean;
+	keyboardRelayActive: boolean;
+	keyboardRelayControllerId: number | null;
 };
 
-const initialState: GamepadState = {
+const initialState: GamepadSliceState = {
 	gamepads: [],
 	keymap: defaultKeymap(),
+	keyboardKeymap: defaultKeyboardKeymap(),
+	keyboardConnected: true,
+	keyboardRelayActive: false,
+	keyboardRelayControllerId: null,
 };
 
 const gamepadSlice = createSlice({
@@ -44,8 +54,25 @@ const gamepadSlice = createSlice({
 		setKeymap(state, action: PayloadAction<KeymapEntry[]>) {
 			state.keymap = action.payload;
 		},
+		setKeyboardKeymap(state, action: PayloadAction<KeyboardKeymapEntry[]>) {
+			state.keyboardKeymap = action.payload;
+		},
+		setKeyboardRelayActive(
+			state,
+			action: PayloadAction<{ active: boolean; controllerId: number | null }>,
+		) {
+			state.keyboardRelayActive = action.payload.active;
+			state.keyboardRelayControllerId = action.payload.controllerId;
+		},
 	},
 });
 
-export const { setGamepads, updateGamepad, setRelayActive, setKeymap } = gamepadSlice.actions;
+export const {
+	setGamepads,
+	updateGamepad,
+	setRelayActive,
+	setKeymap,
+	setKeyboardKeymap,
+	setKeyboardRelayActive,
+} = gamepadSlice.actions;
 export default gamepadSlice.reducer;

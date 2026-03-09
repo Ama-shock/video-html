@@ -522,6 +522,13 @@ input[type="range"] {
 .btn-primary:hover:not(:disabled) {
 	background: var(--accent-hover);
 }
+.btn-warning {
+	background: #e6a817;
+	color: #fff;
+}
+.btn-warning:hover:not(:disabled) {
+	background: #c89314;
+}
 .btn-danger {
 	background: var(--danger);
 	color: #fff;
@@ -883,6 +890,12 @@ input[type="range"] {
 	gap: 6px;
 }
 
+.version-label {
+	font-size: 11px;
+	color: var(--text-dim, #888);
+	margin-bottom: 8px;
+}
+
 /* ---- Controller / Device Tables (in menu) ---- */
 .section-header {
 	display: flex;
@@ -961,6 +974,66 @@ input[type="range"] {
 	color: var(--text-dim);
 }
 
+/* Dongle card layout (WinUSB 2-row) */
+.dongle-card-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.dongle-card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 8px 10px;
+}
+.dongle-card.orphan-row {
+	opacity: 0.6;
+}
+.dongle-card-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.dongle-card-row .mono {
+	font-family: 'Consolas', 'Monaco', monospace;
+	font-size: 12px;
+	white-space: nowrap;
+}
+.dongle-desc {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+}
+.dongle-driver {
+	font-size: 11px;
+	color: var(--text-dim);
+	white-space: nowrap;
+}
+.dongle-card-actions {
+	display: flex;
+	gap: 6px;
+	margin-top: 6px;
+}
+.dongle-card-actions .btn {
+	flex: 1;
+}
+
+/* Player badge */
+.player-badge {
+	display: inline-block;
+	font-size: 11px;
+	font-weight: 700;
+	padding: 1px 5px;
+	border-radius: 3px;
+	background: rgba(91, 141, 239, 0.2);
+	color: var(--accent);
+	white-space: nowrap;
+}
+
 /* Status badges */
 .status-badge {
 	font-size: 11px;
@@ -975,6 +1048,15 @@ input[type="range"] {
 .status-badge.waiting {
 	background: rgba(91, 141, 239, 0.15);
 	color: var(--accent);
+}
+.status-badge.syncing {
+	background: rgba(239, 200, 91, 0.15);
+	color: var(--warning, #efc85b);
+	animation: pulse-syncing 1.5s ease-in-out infinite;
+}
+@keyframes pulse-syncing {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
 }
 .status-badge.offline {
 	background: rgba(136, 136, 153, 0.15);
@@ -1080,6 +1162,30 @@ input[type="range"] {
 .source-type {
 	font-size: 11px;
 	color: var(--text-dim);
+}
+
+/* ---- Input Visualizer ---- */
+.input-viz {
+	flex-shrink: 0;
+}
+.input-viz.empty {
+	width: 99px;
+	height: 33px;
+	opacity: 0.3;
+}
+
+/* Source card / assigned row layout with input viz */
+.source-info {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.assigned-source-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
 }
 
 /* ---- Scrollbar ---- */

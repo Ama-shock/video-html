@@ -1,10 +1,17 @@
 /**
- * Gamepad → switch-bt-ws リレー。
+ * Gamepad / Keyboard → switch-bt-ws リレー。
  *
- * キーマップを使って Web Gamepad の入力を switch-bt-ws WebSocket に変換して送信する。
+ * キーマップを使って Web Gamepad / キーボードの入力を switch-bt-ws WebSocket に変換して送信する。
  */
 
 import type { KeymapEntry } from '../db/settings';
+import {
+	addKeyboardListener,
+	KEYBOARD_GAMEPAD_INDEX,
+	removeKeyboardListener,
+	startKeyboardListening,
+	stopKeyboardListening,
+} from '../keyboard/index';
 import type { SwitchBtWsClient } from '../switchBtWs/client';
 import {
 	addGamepadListener,
@@ -28,17 +35,25 @@ const activeRelays = new Map<number, () => void>();
 export function startRelay(target: RelayTarget): void {
 	stopRelay(target.gamepadIndex);
 
-	startGamepadPolling();
-
 	const handler = (state: GamepadState) => {
 		if (state.index !== target.gamepadIndex) return;
-		const _buttonStatus = applyKeymap(state.buttons, target.keymap);
+		const buttonStatus = applyKeymap(state.buttons, target.keymap);
 		const axes = mapAxes(state.axes);
-		target.client.sendGamepadState(state.buttons, axes);
+		target.client.sendGamepadInput(buttonStatus, axes);
 	};
 
-	addGamepadListener(handler);
-	activeRelays.set(target.gamepadIndex, () => removeGamepadListener(handler));
+	if (target.gamepadIndex === KEYBOARD_GAMEPAD_INDEX) {
+		startKeyboardListening();
+		addKeyboardListener(handler);
+		activeRelays.set(target.gamepadIndex, () => {
+			removeKeyboardListener(handler);
+			stopKeyboardListening();
+		});
+	} else {
+		startGamepadPolling();
+		addGamepadListener(handler);
+		activeRelays.set(target.gamepadIndex, () => removeGamepadListener(handler));
+	}
 }
 
 export function stopRelay(gamepadIndex: number): void {

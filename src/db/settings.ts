@@ -3,7 +3,7 @@
  * switch-bt-ws の接続先、デバイス選択、キーマップなど。
  */
 
-import { dbGet, dbSet } from './index';
+import { dbDelete, dbGet, dbSet } from './index';
 
 export type AppSettings = {
 	switchBtWsPort: number; // デフォルト: 8765
@@ -42,6 +42,79 @@ export async function loadKeymap(): Promise<KeymapEntry[]> {
 
 export async function saveKeymap(keymap: KeymapEntry[]): Promise<void> {
 	await dbSet('keymap', 'default', keymap);
+}
+
+// ---------------------------------------------------------------------------
+// キーボードキーマップ
+// ---------------------------------------------------------------------------
+
+export async function loadKeyboardKeymap(): Promise<
+	import('../keyboard/index').KeyboardKeymapEntry[]
+> {
+	const { defaultKeyboardKeymap } = await import('../keyboard/keymap');
+	return (
+		(await dbGet<import('../keyboard/index').KeyboardKeymapEntry[]>('keymap', 'keyboard')) ??
+		defaultKeyboardKeymap()
+	);
+}
+
+export async function saveKeyboardKeymap(
+	keymap: import('../keyboard/index').KeyboardKeymapEntry[],
+): Promise<void> {
+	await dbSet('keymap', 'keyboard', keymap);
+}
+
+// ---------------------------------------------------------------------------
+// 既知ドングル・接続マップ
+// ---------------------------------------------------------------------------
+
+export async function loadKnownDongles(): Promise<import('../switchBtWs/types').KnownDongle[]> {
+	return (
+		(await dbGet<import('../switchBtWs/types').KnownDongle[]>('settings', 'known-dongles')) ?? []
+	);
+}
+
+export async function saveKnownDongles(
+	dongles: import('../switchBtWs/types').KnownDongle[],
+): Promise<void> {
+	await dbSet('settings', 'known-dongles', dongles);
+}
+
+export async function loadConnectionMap(): Promise<
+	import('../switchBtWs/types').ConnectionMapEntry[]
+> {
+	return (
+		(await dbGet<import('../switchBtWs/types').ConnectionMapEntry[]>(
+			'settings',
+			'connection-map',
+		)) ?? []
+	);
+}
+
+export async function saveConnectionMap(
+	entries: import('../switchBtWs/types').ConnectionMapEntry[],
+): Promise<void> {
+	await dbSet('settings', 'connection-map', entries);
+}
+
+// ---------------------------------------------------------------------------
+// リンクキー
+// ---------------------------------------------------------------------------
+
+/** ドングルキーに紐付けたリンクキー（base64）を保存する */
+export async function saveLinkKeys(dongleKey: string, data: string): Promise<void> {
+	await dbSet('settings', `link-keys:${dongleKey}`, data);
+}
+
+/** ドングルキーに紐付けたリンクキー（base64）を読み込む */
+export async function loadLinkKeys(dongleKey: string): Promise<string | null> {
+	const v = await dbGet<string>('settings', `link-keys:${dongleKey}`);
+	return v ?? null;
+}
+
+/** ドングルキーに紐付けたリンクキーを削除する */
+export async function deleteLinkKeys(dongleKey: string): Promise<void> {
+	await dbDelete('settings', `link-keys:${dongleKey}`);
 }
 
 export function defaultKeymap(): KeymapEntry[] {

@@ -14,12 +14,14 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 
 type StatusCallback = (status: SwitchBtWsStatus) => void;
 type ConnectionCallback = (status: ConnectionStatus) => void;
+type LinkKeysCallback = (data: string) => void;
 
 export class SwitchBtWsClient {
 	private ws: WebSocket | null = null;
 	private wsUrl: string;
 	private statusCb: StatusCallback | null = null;
 	private connectionCb: ConnectionCallback | null = null;
+	private linkKeysCb: LinkKeysCallback | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private shouldConnect = false;
 	public controllerId: number;
@@ -35,6 +37,10 @@ export class SwitchBtWsClient {
 	}
 	onConnection(cb: ConnectionCallback): this {
 		this.connectionCb = cb;
+		return this;
+	}
+	onLinkKeys(cb: LinkKeysCallback): this {
+		this.linkKeysCb = cb;
 		return this;
 	}
 
@@ -65,9 +71,14 @@ export class SwitchBtWsClient {
 
 		ws.onmessage = (ev) => {
 			try {
-				const msg = JSON.parse(ev.data as string) as { type: string } & SwitchBtWsStatus;
+				const msg = JSON.parse(ev.data as string) as { type: string; [k: string]: unknown };
 				if (msg.type === 'status') {
-					this.statusCb?.({ paired: msg.paired, rumble: msg.rumble });
+					this.statusCb?.({
+						paired: msg.paired as boolean,
+						rumble: msg.rumble as boolean,
+					});
+				} else if (msg.type === 'link_keys') {
+					this.linkKeysCb?.(msg.data as string);
 				}
 			} catch {
 				/* ignore */
@@ -93,10 +104,12 @@ export class SwitchBtWsClient {
 		}
 	}
 
-	sendButtons(buttonStatus: number): void {
-		this.send({ type: 'gamepad_state', buttons: buttonStatus });
+	/** キーマップ適用済みのボタンビットマスク + 軸値を送信する。 */
+	sendGamepadInput(buttonStatus: number, axes: number[]): void {
+		this.send({ type: 'gamepad_state', button_status: buttonStatus, axes });
 	}
 
+	/** 生のボタン配列 + 軸値を送信する（Rust 側でマッピング）。 */
 	sendGamepadState(buttons: boolean[], axes: number[]): void {
 		this.send({ type: 'gamepad_state', buttons, axes });
 	}
