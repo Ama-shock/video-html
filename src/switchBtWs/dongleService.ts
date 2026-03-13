@@ -187,6 +187,8 @@ export async function markDongleAsKnown(device: BtDevice, linkKeys?: string): Pr
 	const state = store.getState().dongle;
 	const key = dongleKey(device.vid, device.pid, device.instance);
 	const prev = state.knownDongles.find((k) => dongleKey(k.vid, k.pid, k.instance) === key);
+	// インスタンスが変わっても description が失われないよう、VID+PID 横断で検索する
+	const anyDesc = state.knownDongles.find((k) => k.vid === device.vid && k.pid === device.pid && k.description)?.description;
 	const existing = state.knownDongles.filter((k) => dongleKey(k.vid, k.pid, k.instance) !== key);
 	const updated: KnownDongle[] = [
 		...existing,
@@ -196,7 +198,7 @@ export async function markDongleAsKnown(device: BtDevice, linkKeys?: string): Pr
 			instance: device.instance,
 			lastConnected: Date.now(),
 			linkKeys: linkKeys ?? prev?.linkKeys,
-			description: device.description || prev?.description,
+			description: device.description || prev?.description || anyDesc,
 		},
 	];
 	store.dispatch(setKnownDongles(updated));

@@ -40,25 +40,22 @@ export default function ControllerList() {
 	const winUsbDevices: WinUsbRow[] = devices
 		.filter((d) => isWinUsb(d.driver))
 		.map((d) => {
-			// description はインスタンス変化で一致しないことがあるため VID+PID で検索
-			const knownByKey = knownDongles.find(
+			const known = knownDongles.find(
 				(k) => k.vid === d.vid && k.pid === d.pid && k.instance === d.instance,
 			);
-			const knownByVidPid = knownDongles.find(
-				(k) => k.vid === d.vid && k.pid === d.pid && k.description,
-			);
-			const isKnown = !!knownByKey;
-			// 保存済み description → デバイスの description から "(WinUSB)" 等を除去した名称の順で選択
-			const savedDesc = knownByVidPid?.description;
+			// description は markDongleAsKnown が VID+PID 横断で引き継ぐ。
+			// それでも未設定なら VID+PID で再検索（既存 IndexedDB エントリ救済）
+			const savedDesc =
+				known?.description ??
+				knownDongles.find((k) => k.vid === d.vid && k.pid === d.pid && k.description)?.description;
 			const rawDesc = d.description.replace(/\s*\(WinUSB\)/i, '').trim();
-			const displayName = savedDesc || rawDesc;
 			return {
 				device: d,
 				controller:
 					controllers.find((c) => c.vid === d.vid && c.pid === d.pid && c.instance === d.instance) ??
 					null,
-				isKnown,
-				displayName,
+				isKnown: !!known,
+				displayName: savedDesc || rawDesc,
 			};
 		});
 
