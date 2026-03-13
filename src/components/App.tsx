@@ -6,7 +6,6 @@ import {
 	loadKeyboardKeymap,
 	loadKeymap,
 	loadKnownDongles,
-	loadLinkKeys,
 	loadSettings,
 } from '../db/settings';
 import { getOrCreateIdentity } from '../identity';
@@ -20,10 +19,10 @@ import {
 	setVideoDevice,
 } from '../store/appSlice';
 import { setConnectionMap, setKnownDongles, setLinkKeysAvailable } from '../store/dongleSlice';
+import { dongleKey } from '../switchBtWs/types';
 import { setKeyboardKeymap, setKeymap } from '../store/gamepadSlice';
 import { setIdentity, setUsername } from '../store/identitySlice';
-import { startDonglePolling, stopDonglePolling } from '../switchBtWs/donglePoller';
-import { dongleKey } from '../switchBtWs/types';
+import { startGlobalWs, stopGlobalWs } from '../switchBtWs/dongleWs';
 import ProfileSetup from './identity/ProfileSetup';
 import Layout from './Layout';
 
@@ -60,11 +59,12 @@ export default function App() {
 			dispatch(setKnownDongles(knownDongles));
 			dispatch(setConnectionMap(connMap));
 
-			// 既知ドングルのリンクキー有無を確認
+			// 既知ドングルのリンクキー有無を確認（knownDongles に含まれている）
 			for (const k of knownDongles) {
-				const dKey = dongleKey(k.vid, k.pid, k.instance);
-				const lk = await loadLinkKeys(dKey);
-				if (lk) dispatch(setLinkKeysAvailable({ key: dKey, available: true }));
+				if (k.linkKeys) {
+					const dKey = dongleKey(k.vid, k.pid, k.instance);
+					dispatch(setLinkKeysAvailable({ key: dKey, available: true }));
+				}
 			}
 
 			dispatch(setInitialized());
@@ -75,17 +75,17 @@ export default function App() {
 		})();
 	}, [dispatch]);
 
-	// ホストモード時にドングルポーリングを開始
+	// ホストモード時にグローバル WS 接続を開始
 	const mode = useSelector((s: RootState) => s.app.mode);
 	const wsPort = useSelector((s: RootState) => s.app.switchBtWsPort);
 	useEffect(() => {
 		if (!initialized) return;
 		if (mode !== 'guest') {
-			startDonglePolling(`http://localhost:${wsPort}`);
+			startGlobalWs(`http://localhost:${wsPort}`);
 		} else {
-			stopDonglePolling();
+			stopGlobalWs();
 		}
-		return () => stopDonglePolling();
+		return () => stopGlobalWs();
 	}, [initialized, mode, wsPort]);
 
 	// hashchange でも room= があればゲストモードに切替

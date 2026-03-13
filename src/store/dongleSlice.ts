@@ -87,6 +87,22 @@ const dongleSlice = createSlice({
 		setDongleInitialized(state) {
 			state.initialized = true;
 		},
+		/** 個別コントローラーの状態を更新する（グローバル WS の controller_status 用） */
+		updateControllerStatus(
+			state,
+			action: PayloadAction<{
+				id: number;
+				paired: boolean;
+				rumble: boolean;
+				syncing: boolean;
+				player: number;
+			}>,
+		) {
+			const idx = state.controllers.findIndex((c) => c.id === action.payload.id);
+			if (idx >= 0) {
+				Object.assign(state.controllers[idx], action.payload);
+			}
+		},
 	},
 });
 
@@ -103,5 +119,6 @@ export const {
 	setDriverBusy,
 	setVersion,
 	setDongleInitialized,
+	updateControllerStatus,
 } = dongleSlice.actions;
 export default dongleSlice.reducer;

@@ -3,81 +3,21 @@
  *
  * WS 接続・再接続・ペアリング・切断の複合フローを管理する。
  * Redux store に直接ディスパッチする。
+ *
+ * デバイス・コントローラー一覧の取得はグローバル WS (dongleWs.ts) が担当する。
  */
 
-import { loadLinkKeys, saveKnownDongles, saveLinkKeys } from '../db/settings';
+import { saveKnownDongles } from '../db/settings';
 import { store } from '../store';
 import {
 	setControllers,
-	setDevices,
 	setDongleStatus,
-	setError,
 	setKnownDongles,
 	setLinkKeysAvailable,
-	setLoading,
 	setManuallyDisconnected,
-	setVersion,
 } from '../store/dongleSlice';
-import type { BtDevice, Controller, KnownDongle } from './types';
+import type { BtDevice, KnownDongle } from './types';
 import { dongleKey, isWinUsb } from './types';
-
-// ---------------------------------------------------------------------------
-// データ取得
-// ---------------------------------------------------------------------------
-
-export async function fetchDongleData(apiBase: string): Promise<{
-	devices: BtDevice[];
-	controllers: Controller[];
-	version: string | null;
-}> {
-	store.dispatch(setLoading(true));
-	store.dispatch(setError(null));
-	try {
-		const [ctrlResp, devResp] = await Promise.all([
-			fetch(`${apiBase}/api/controllers`),
-			fetch(`${apiBase}/api/driver/list`),
-		]);
-
-		let controllers: Controller[] = [];
-		if (ctrlResp.ok) {
-			controllers = await ctrlResp.json();
-			store.dispatch(setControllers(controllers));
-		}
-
-		let devices: BtDevice[] = [];
-		let version: string | null = null;
-		if (devResp.ok) {
-			const data = (await devResp.json()) as { version?: string; devices?: BtDevice[] };
-			if (data.devices) {
-				devices = data.devices;
-				version = data.version ?? null;
-			} else {
-				devices = data as unknown as BtDevice[];
-			}
-			store.dispatch(setDevices(devices));
-			if (version) store.dispatch(setVersion(version));
-		}
-
-		// コントローラー状態から dongleStatuses を更新
-		for (const c of controllers) {
-			const key = dongleKey(c.vid, c.pid, c.instance);
-			if (c.paired) {
-				store.dispatch(setDongleStatus({ key, status: 'paired' }));
-			} else if (c.syncing) {
-				store.dispatch(setDongleStatus({ key, status: 'syncing' }));
-			} else {
-				store.dispatch(setDongleStatus({ key, status: 'connecting' }));
-			}
-		}
-
-		return { devices, controllers, version };
-	} catch {
-		store.dispatch(setError('switch-bt-ws に接続できません'));
-		return { devices: [], controllers: [], version: null };
-	} finally {
-		store.dispatch(setLoading(false));
-	}
-}
 
 // ---------------------------------------------------------------------------
 // 再接続フロー（既知ドングル用）
@@ -114,8 +54,11 @@ export async function reconnectDongle(apiBase: string, device: BtDevice): Promis
 			return null;
 		}
 
-		// IndexedDB からリンクキーを取得
-		const linkKeys = await loadLinkKeys(key);
+		// knownDongles からリンクキーを取得
+		const known = store.getState().dongle.knownDongles.find(
+			(k) => dongleKey(k.vid, k.pid, k.instance) === key,
+		);
+		const linkKeys = known?.linkKeys ?? null;
 
 		// WS を開いてステータス監視 + reconnect コマンドを送信
 		openControllerWs(apiBase, controllerId, key, device, {
@@ -177,13 +120,17 @@ export async function disconnectDongle(apiBase: string, controllerId: number): P
 		store.dispatch(setDongleStatus({ key: dKey, status: 'disconnected' }));
 		store.dispatch(setManuallyDisconnected({ key: dKey, disconnected: true }));
 	}
+
+	// コントローラーの link_keys が取得済みなら既知ドングルに保存
+	if (ctrl?.link_keys) {
+		await markDongleAsKnown(
+			{ vid: ctrl.vid, pid: ctrl.pid, instance: ctrl.instance, description: '', driver: '' },
+			ctrl.link_keys,
+		);
+	}
+
 	// コントローラーリストからも即座に除外
 	store.dispatch(setControllers(controllers.filter((c) => c.id !== controllerId)));
-
-	// サブプロセス終了前にリンクキーを保存（プロセス終了でメモリ上のキーが消えるため）
-	if (dKey) {
-		await fetchAndSaveLinkKeys(apiBase, controllerId, dKey);
-	}
 
 	// 管理用 WS を閉じる
 	closeControllerWs(controllerId);
@@ -193,8 +140,6 @@ export async function disconnectDongle(apiBase: string, controllerId: number): P
 	} catch {
 		/* ignore */
 	}
-
-	await refreshControllers(apiBase);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,16 +182,27 @@ export async function autoConnectKnownDongles(apiBase: string): Promise<void> {
 // 既知ドングル管理
 // ---------------------------------------------------------------------------
 
-/** ペアリング成功時に既知ドングルに追加 */
-export async function markDongleAsKnown(device: BtDevice): Promise<void> {
+/** ペアリング成功時に既知ドングルに追加（リンクキーがあれば一緒に保存） */
+export async function markDongleAsKnown(device: BtDevice, linkKeys?: string): Promise<void> {
 	const state = store.getState().dongle;
 	const key = dongleKey(device.vid, device.pid, device.instance);
+	const prev = state.knownDongles.find((k) => dongleKey(k.vid, k.pid, k.instance) === key);
 	const existing = state.knownDongles.filter((k) => dongleKey(k.vid, k.pid, k.instance) !== key);
 	const updated: KnownDongle[] = [
 		...existing,
-		{ vid: device.vid, pid: device.pid, instance: device.instance, lastConnected: Date.now() },
+		{
+			vid: device.vid,
+			pid: device.pid,
+			instance: device.instance,
+			lastConnected: Date.now(),
+			linkKeys: linkKeys ?? prev?.linkKeys,
+			description: device.description || prev?.description,
+		},
 	];
 	store.dispatch(setKnownDongles(updated));
+	if (linkKeys) {
+		store.dispatch(setLinkKeysAvailable({ key, available: true }));
+	}
 	await saveKnownDongles(updated);
 }
 
@@ -260,28 +216,55 @@ export async function forgetDongle(vid: string, pid: string, instance: number): 
 }
 
 // ---------------------------------------------------------------------------
+// 既存コントローラーへの自動接続
+// ---------------------------------------------------------------------------
+
+/** 指定コントローラーに管理用 WS が開いているかを返す */
+export function hasControllerWs(controllerId: number): boolean {
+	return controllerWsMap.has(controllerId);
+}
+
+/**
+ * グローバル WS で検出された既接続コントローラーに管理用 WS を接続する。
+ * リンクキーの取得と既知ドングル登録を行う。
+ */
+export function attachPairedController(apiBase: string, controller: { id: number; vid: string; pid: string; instance: number }): void {
+	if (controllerWsMap.has(controller.id)) return;
+
+	const device: BtDevice = {
+		vid: controller.vid,
+		pid: controller.pid,
+		instance: controller.instance,
+		description: '',
+		driver: 'WinUSB',
+	};
+	const key = dongleKey(controller.vid, controller.pid, controller.instance);
+
+	store.dispatch(setDongleStatus({ key, status: 'paired' }));
+
+	openControllerWs(apiBase, controller.id, key, device, { type: 'get_link_keys' });
+
+	// 既知ドングルに登録
+	markDongleAsKnown(device);
+}
+
+// ---------------------------------------------------------------------------
 // ドライバ操作
 // ---------------------------------------------------------------------------
 
-export async function installWinUsbDriver(
-	apiBase: string,
-	vid: string,
-	pid: string,
-): Promise<string> {
+export async function installWinUsbDriver(apiBase: string, device: BtDevice): Promise<string> {
+	// インストール前に description を保存（WinUSB 化後は "Bluetooth Dongle" に変わるため）
+	await markDongleAsKnown(device);
 	const resp = await fetch(`${apiBase}/api/driver/install`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ vid: parseInt(vid, 16), pid: parseInt(pid, 16) }),
+		body: JSON.stringify({ vid: parseInt(device.vid, 16), pid: parseInt(device.pid, 16) }),
 	});
 	const result = (await resp.json()) as { message?: string; error?: string };
 	return result.message ?? result.error ?? '完了';
 }
 
-export async function restoreStandardDriver(
-	apiBase: string,
-	vid: string,
-	pid: string,
-): Promise<string> {
+export async function restoreStandardDriver(apiBase: string, vid: string, pid: string): Promise<string> {
 	const resp = await fetch(`${apiBase}/api/driver/restore`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -309,6 +292,7 @@ export function closeControllerWs(controllerId: number): void {
 
 /**
  * コントローラーを POST で作成する。既存があれば先に削除。
+ * コントローラーリストの更新はグローバル WS が自動的に配信する。
  * @returns controller ID、失敗時は null
  */
 async function createController(apiBase: string, device: BtDevice): Promise<number | null> {
@@ -327,11 +311,13 @@ async function createController(apiBase: string, device: BtDevice): Promise<numb
 	if (!addResp.ok) return null;
 
 	const result = (await addResp.json()) as { id?: number };
-	await refreshControllers(apiBase);
 	return result.id ?? null;
 }
 
-type WsInitCommand = { type: 'reconnect'; link_keys: string | null } | { type: 'sync_start' };
+type WsInitCommand =
+	| { type: 'reconnect'; link_keys: string | null }
+	| { type: 'sync_start' }
+	| { type: 'get_link_keys' };
 
 /**
  * コントローラーに管理用 WS を開き、初期コマンドを送信する。
@@ -375,7 +361,6 @@ function openControllerWs(
 					// paired に遷移した瞬間のみ処理（毎 tick ではなく）
 					if (!prevPaired) {
 						await markDongleAsKnown(device);
-						await refreshControllers(apiBase);
 					}
 				} else if (msg.syncing) {
 					store.dispatch(setDongleStatus({ key: dKey, status: 'syncing' }));
@@ -384,8 +369,7 @@ function openControllerWs(
 				}
 				prevPaired = !!msg.paired;
 			} else if (msg.type === 'link_keys' && msg.data) {
-				await saveLinkKeys(dKey, msg.data);
-				store.dispatch(setLinkKeysAvailable({ key: dKey, available: true }));
+				await markDongleAsKnown(device, msg.data);
 			}
 		} catch {
 			/* ignore parse errors */
@@ -401,89 +385,3 @@ function openControllerWs(
 	};
 }
 
-/**
- * サーバーからリンクキーをエクスポートし IndexedDB に保存する。
- * 一時的に WS を開いて LinkKeys メッセージを受信する。
- */
-async function fetchAndSaveLinkKeys(
-	apiBase: string,
-	controllerId: number,
-	dKey: string,
-): Promise<void> {
-	// 既に管理用 WS が開いている場合はそこから要求
-	const existingWs = controllerWsMap.get(controllerId);
-	if (existingWs && existingWs.readyState === WebSocket.OPEN) {
-		return new Promise<void>((resolve) => {
-			const origHandler = existingWs.onmessage;
-			const timeout = setTimeout(() => {
-				existingWs.onmessage = origHandler;
-				resolve();
-			}, 5000);
-
-			existingWs.onmessage = async (ev) => {
-				// 既存ハンドラも呼ぶ
-				if (origHandler) (origHandler as (ev: MessageEvent) => void).call(existingWs, ev);
-				try {
-					const msg = JSON.parse(ev.data as string) as { type: string; data?: string };
-					if (msg.type === 'link_keys' && msg.data) {
-						await saveLinkKeys(dKey, msg.data);
-						store.dispatch(setLinkKeysAvailable({ key: dKey, available: true }));
-						clearTimeout(timeout);
-						existingWs.onmessage = origHandler;
-						resolve();
-					}
-				} catch {
-					/* ignore */
-				}
-			};
-
-			existingWs.send(JSON.stringify({ type: 'get_link_keys' }));
-		});
-	}
-
-	// 管理用 WS が無い場合は一時的に WS を開く
-	const wsBase = apiBase.replace(/^http/, 'ws');
-	return new Promise<void>((resolve) => {
-		const ws = new WebSocket(`${wsBase}/ws/${controllerId}`);
-		const timeout = setTimeout(() => {
-			ws.close();
-			resolve();
-		}, 5000);
-
-		ws.onmessage = async (ev) => {
-			try {
-				const msg = JSON.parse(ev.data as string) as { type: string; data?: string };
-				if (msg.type === 'link_keys' && msg.data) {
-					await saveLinkKeys(dKey, msg.data);
-					store.dispatch(setLinkKeysAvailable({ key: dKey, available: true }));
-					clearTimeout(timeout);
-					ws.close();
-					resolve();
-				}
-			} catch {
-				/* ignore */
-			}
-		};
-
-		ws.onopen = () => {
-			ws.send(JSON.stringify({ type: 'get_link_keys' }));
-		};
-
-		ws.onerror = () => {
-			clearTimeout(timeout);
-			resolve();
-		};
-	});
-}
-
-async function refreshControllers(apiBase: string): Promise<void> {
-	try {
-		const resp = await fetch(`${apiBase}/api/controllers`);
-		if (resp.ok) {
-			const controllers = (await resp.json()) as Controller[];
-			store.dispatch(setControllers(controllers));
-		}
-	} catch {
-		/* ignore */
-	}
-}

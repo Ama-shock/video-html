@@ -21,6 +21,7 @@ export type Controller = {
 	rumble: boolean;
 	syncing: boolean;
 	player: number;
+	link_keys?: string;
 };
 
 /** IndexedDB に保存する既知ドングル */
@@ -29,6 +30,8 @@ export type KnownDongle = {
 	pid: string;
 	instance: number;
 	lastConnected: number;
+	linkKeys?: string;
+	description?: string;
 };
 
 /** IndexedDB に保存する接続マップエントリ */

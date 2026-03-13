@@ -3,13 +3,13 @@ import { useSelector } from 'react-redux';
 import type { RootState } from '../../store';
 import {
 	disconnectDongle,
-	fetchDongleData,
 	installWinUsbDriver,
 	markDongleAsKnown,
 	reconnectDongle,
 	restoreStandardDriver,
 	startPairing,
 } from '../../switchBtWs/dongleService';
+import { requestRefresh } from '../../switchBtWs/dongleWs';
 import type { BtDevice, Controller } from '../../switchBtWs/types';
 import { controllerPlayerMap, dongleKey, isBthUsb, isWinUsb } from '../../switchBtWs/types';
 
@@ -18,6 +18,7 @@ type WinUsbRow = {
 	device: BtDevice;
 	controller: Controller | null;
 	isKnown: boolean;
+	displayName: string;
 };
 
 export default function ControllerList() {
@@ -28,7 +29,6 @@ export default function ControllerList() {
 	const controllers = useSelector((s: RootState) => s.dongle.controllers);
 	const knownDongles = useSelector((s: RootState) => s.dongle.knownDongles);
 	const dongleStatuses = useSelector((s: RootState) => s.dongle.dongleStatuses);
-	const loading = useSelector((s: RootState) => s.dongle.loading);
 	const error = useSelector((s: RootState) => s.dongle.error);
 	const version = useSelector((s: RootState) => s.dongle.version);
 	const linkKeysAvailable = useSelector((s: RootState) => s.dongle.linkKeysAvailable);
@@ -39,15 +39,19 @@ export default function ControllerList() {
 	// --- デバイスを3カテゴリに分類 ---
 	const winUsbDevices: WinUsbRow[] = devices
 		.filter((d) => isWinUsb(d.driver))
-		.map((d) => ({
-			device: d,
-			controller:
-				controllers.find((c) => c.vid === d.vid && c.pid === d.pid && c.instance === d.instance) ??
-				null,
-			isKnown: knownDongles.some(
+		.map((d) => {
+			const known = knownDongles.find(
 				(k) => k.vid === d.vid && k.pid === d.pid && k.instance === d.instance,
-			),
-		}));
+			);
+			return {
+				device: d,
+				controller:
+					controllers.find((c) => c.vid === d.vid && c.pid === d.pid && c.instance === d.instance) ??
+					null,
+				isKnown: !!known,
+				displayName: known?.description || d.description,
+			};
+		});
 
 	const bthUsbDevices = devices.filter((d) => isBthUsb(d.driver));
 	const otherDevices = devices.filter((d) => !isWinUsb(d.driver) && !isBthUsb(d.driver));
@@ -90,11 +94,10 @@ export default function ControllerList() {
 		setDriverBusy(true);
 		const msg = await restoreStandardDriver(apiBase, vid, pid);
 		alert(msg);
-		await fetchDongleData(apiBase);
 		setDriverBusy(false);
 	};
 
-	const handleInstallWinUsb = async (vid: string, pid: string) => {
+	const handleInstallWinUsb = async (device: BtDevice) => {
 		const ok = window.confirm(
 			'ドライバを切り替えると、このドングルは通常の Bluetooth デバイスとして利用できなくなります。\n' +
 				'BTStack 専用ドングルとして使用する場合のみ続行してください。\n\n' +
@@ -102,13 +105,12 @@ export default function ControllerList() {
 		);
 		if (!ok) return;
 		setDriverBusy(true);
-		const msg = await installWinUsbDriver(apiBase, vid, pid);
+		const msg = await installWinUsbDriver(apiBase, device);
 		alert(msg);
-		await fetchDongleData(apiBase);
 		setDriverBusy(false);
 	};
 
-	const handleRefresh = () => fetchDongleData(apiBase);
+	const handleRefresh = () => requestRefresh();
 
 	return (
 		<div className="controller-list">
@@ -121,13 +123,12 @@ export default function ControllerList() {
 					type="button"
 					className="btn btn-secondary btn-sm"
 					onClick={handleRefresh}
-					disabled={loading}
 				>
-					{loading ? '更新中…' : '更新'}
+					更新
 				</button>
 			</div>
 
-			{devices.length === 0 && !loading && (
+			{devices.length === 0 && !error && (
 				<p className="empty-msg">BT ドングルが検出されていません</p>
 			)}
 
@@ -152,11 +153,12 @@ export default function ControllerList() {
 										<span className="mono">
 											{row.device.vid}:{row.device.pid}
 										</span>
-										<span className="dongle-desc">{row.device.description}</span>
+										<span className="dongle-desc">{row.displayName}</span>
 										<DongleStatusBadge
 											status={status}
 											paired={row.controller?.paired ?? false}
 											syncing={row.controller?.syncing ?? false}
+											hasLinkKeys={!!linkKeysAvailable[key]}
 										/>
 									</div>
 									<div className="dongle-card-actions">
@@ -258,7 +260,7 @@ export default function ControllerList() {
 										<button
 											type="button"
 											className="btn btn-primary btn-sm"
-											onClick={() => handleInstallWinUsb(d.vid, d.pid)}
+											onClick={() => handleInstallWinUsb(d)}
 											disabled={driverBusy}
 										>
 											BTStack 用に切替
@@ -305,22 +307,39 @@ function DongleStatusBadge({
 	status,
 	paired,
 	syncing,
+	hasLinkKeys,
 }: {
 	status: string;
 	paired: boolean;
 	syncing: boolean;
+	hasLinkKeys: boolean;
 }) {
+	const linkKeyLabel = (hasLinkKeys || paired) && (
+		<span className="text-dim" style={{ fontSize: 11 }}>
+			リンクキー保持
+		</span>
+	);
+
 	if (paired)
 		return (
 			<>
 				<span className="status-badge paired">接続中</span>
-				<span className="text-dim" style={{ fontSize: 11 }}>
-					リンクキー保持
-				</span>
+				{linkKeyLabel}
 			</>
 		);
 	if (syncing) return <span className="status-badge syncing">ペアリング中…</span>;
 	if (status === 'connecting') return <span className="status-badge waiting">接続中…</span>;
-	if (status === 'error') return <span className="status-badge offline">エラー</span>;
-	return <span className="status-badge offline">未接続</span>;
+	if (status === 'error')
+		return (
+			<>
+				<span className="status-badge offline">エラー</span>
+				{linkKeyLabel}
+			</>
+		);
+	return (
+		<>
+			<span className="status-badge offline">未接続</span>
+			{linkKeyLabel}
+		</>
+	);
 }

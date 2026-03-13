@@ -92,6 +92,13 @@ export default function VideoMenu() {
 
 	return (
 		<div className="menu-section">
+			{/* Start capture — top of menu, hidden once started */}
+			{isHost && !isStarted && (
+				<button type="button" className="btn btn-primary" onClick={handleStart}>
+					映像キャプチャ開始
+				</button>
+			)}
+
 			{/* Fullscreen toggle — always visible */}
 			<button type="button" className="btn btn-secondary" onClick={toggleFullscreen}>
 				{isFullscreen ? 'フルスクリーン解除' : 'フルスクリーン'}
@@ -114,12 +121,6 @@ export default function VideoMenu() {
 			{/* Host-only: capture settings */}
 			{isHost && (
 				<>
-					{!isStarted && (
-						<button type="button" className="btn btn-primary" onClick={handleStart}>
-							映像キャプチャ開始
-						</button>
-					)}
-
 					<div className="form-group">
 						<label>
 							映像デバイス
