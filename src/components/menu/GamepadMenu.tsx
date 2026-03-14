@@ -12,7 +12,7 @@ import { startRelay, stopRelay } from '../../gamepad/relay';
 import { generateIdenticonDataUrl } from '../../identity/identicon';
 import { KEYBOARD_GAMEPAD_INDEX, setKeyboardKeymap } from '../../keyboard/index';
 import { defaultKeyboardKeymap } from '../../keyboard/keymap';
-import type { AppDispatch, RootState } from '../../store';
+import { store, type AppDispatch, type RootState } from '../../store';
 import { setSwitchBtWsPort } from '../../store/appSlice';
 import { setConnectionMap } from '../../store/dongleSlice';
 import {
@@ -64,6 +64,7 @@ export default function GamepadMenu() {
 	const connectionMap = useSelector((s: RootState) => s.dongle.connectionMap);
 
 	const isGuest = mode === 'guest';
+	const error = useSelector((s: RootState) => s.dongle.error);
 
 	const tabs = isGuest
 		? (['devices', 'keymap', 'kb-keymap'] as const)
@@ -84,31 +85,33 @@ export default function GamepadMenu() {
 		setPortEditing(false);
 	};
 
-	// Gamepad polling
+	// Gamepad polling — イベント + 定期ポーリングで検出漏れを防ぐ
 	useEffect(() => {
 		const update = () => {
 			const gps = listConnectedGamepads();
-			dispatch(
-				setGamepads(
-					gps.map((gp) => ({
-						index: gp.index,
-						id: gp.id,
-						connected: gp.connected,
-						relayActive: gamepads.find((g) => g.index === gp.index)?.relayActive ?? false,
-						relayControllerId:
-							gamepads.find((g) => g.index === gp.index)?.relayControllerId ?? null,
-					})),
-				),
-			);
+			// 現在の store から relay 状態を取得（stale closure 回避）
+			const current = store.getState().gamepad.gamepads;
+			const mapped = gps.map((gp) => ({
+				index: gp.index,
+				id: gp.id,
+				connected: gp.connected,
+				relayActive: current.find((g) => g.index === gp.index)?.relayActive ?? false,
+				relayControllerId:
+					current.find((g) => g.index === gp.index)?.relayControllerId ?? null,
+			}));
+			dispatch(setGamepads(mapped));
 		};
 		window.addEventListener('gamepadconnected', update);
 		window.addEventListener('gamepaddisconnected', update);
 		update();
+		// 2秒ごとにポーリング（gamepadconnected が発火しないケースへの対応）
+		const pollTimer = setInterval(update, 2000);
 		return () => {
 			window.removeEventListener('gamepadconnected', update);
 			window.removeEventListener('gamepaddisconnected', update);
+			clearInterval(pollTimer);
 		};
-	}, [dispatch, gamepads.find]);
+	}, [dispatch]);
 
 	// Sync keyboard keymap to the keyboard module
 	useEffect(() => {
@@ -257,7 +260,9 @@ export default function GamepadMenu() {
 					<h4>BT ドングル</h4>
 					{controllers.length === 0 ? (
 						<p className="empty-msg">
-							ドングルが登録されていません。switch-bt-ws タブで追加してください。
+							{error
+							? `switch-bt-ws に接続できません: ${error}`
+							: 'ドングルが登録されていません。switch-bt-ws タブで追加してください。'}
 						</p>
 					) : (
 						controllers.map((c) => (

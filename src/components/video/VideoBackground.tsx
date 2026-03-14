@@ -36,16 +36,15 @@ export default function VideoBackground() {
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({
 					video: {
-						deviceId: vidId ? { exact: vidId } : undefined,
-						width: videoWidth,
-						height: videoHeight,
+						deviceId: vidId ? { ideal: vidId } : undefined,
+						width: { ideal: videoWidth },
+						height: { ideal: videoHeight },
 					},
 					audio: {
-						deviceId: audId ? { exact: audId } : undefined,
+						deviceId: audId ? { ideal: audId } : undefined,
 						echoCancellation: false,
 						noiseSuppression: false,
-						suppressLocalAudioPlayback: false,
-					} as MediaTrackConstraints,
+					},
 				});
 				streamRef.current = stream;
 				if (videoRef.current) {

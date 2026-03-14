@@ -79,7 +79,7 @@ mkdirSync('public', { recursive: true });
 const commonOptions: BuildOptions = {
 	bundle: true,
 	minify: !watch,
-	sourcemap: watch ? 'inline' : false,
+	sourcemap: watch ? 'inline' : 'linked',
 	target: ['chrome120', 'firefox120', 'safari17'],
 };
 

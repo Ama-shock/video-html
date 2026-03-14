@@ -45,26 +45,39 @@ async function cleanupExistingController(apiBase: string, device: BtDevice): Pro
 export async function reconnectDongle(apiBase: string, device: BtDevice): Promise<number | null> {
 	const key = dongleKey(device.vid, device.pid, device.instance);
 	store.dispatch(setManuallyDisconnected({ key, disconnected: false }));
+
+	// 既にコントローラーが存在し paired なら、WS を接続して再利用する
+	const controllers = store.getState().dongle.controllers;
+	const existing = controllers.find(
+		(c) => c.vid === device.vid && c.pid === device.pid && c.instance === device.instance,
+	);
+	if (existing && existing.paired) {
+		store.dispatch(setDongleStatus({ key, status: 'paired' }));
+		if (!controllerWsMap.has(existing.id)) {
+			openControllerWs(apiBase, existing.id, key, device, { type: 'get_link_keys' });
+		}
+		return existing.id;
+	}
+
 	store.dispatch(setDongleStatus({ key, status: 'connecting' }));
 
 	try {
-		const controllerId = await createController(apiBase, device);
-		if (controllerId == null) {
-			store.dispatch(setDongleStatus({ key, status: 'error' }));
-			return null;
-		}
-
 		// knownDongles からリンクキーを取得
 		const known = store.getState().dongle.knownDongles.find(
 			(k) => dongleKey(k.vid, k.pid, k.instance) === key,
 		);
 		const linkKeys = known?.linkKeys ?? null;
 
+		// リンクキー付きでコントローラーを作成（BTStack 起動前にインポートされる）
+		const controllerId = await createController(apiBase, device, linkKeys);
+		if (controllerId == null) {
+			store.dispatch(setDongleStatus({ key, status: 'error' }));
+			return null;
+		}
+
 		// WS を開いてステータス監視 + reconnect コマンドを送信
-		openControllerWs(apiBase, controllerId, key, device, {
-			type: 'reconnect',
-			link_keys: linkKeys,
-		});
+		// リンクキーは起動時にインポート済みなので WS 経由では送らない
+		openControllerWs(apiBase, controllerId, key, device, { type: 'reconnect', link_keys: null });
 
 		return controllerId;
 	} catch {
@@ -297,17 +310,22 @@ export function closeControllerWs(controllerId: number): void {
  * コントローラーリストの更新はグローバル WS が自動的に配信する。
  * @returns controller ID、失敗時は null
  */
-async function createController(apiBase: string, device: BtDevice): Promise<number | null> {
+async function createController(apiBase: string, device: BtDevice, linkKeys?: string | null): Promise<number | null> {
 	await cleanupExistingController(apiBase, device);
+
+	const body: Record<string, unknown> = {
+		vid: parseInt(device.vid, 16),
+		pid: parseInt(device.pid, 16),
+		instance: device.instance,
+	};
+	if (linkKeys) {
+		body.link_keys = linkKeys;
+	}
 
 	const addResp = await fetch(`${apiBase}/api/controllers`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
-			vid: parseInt(device.vid, 16),
-			pid: parseInt(device.pid, 16),
-			instance: device.instance,
-		}),
+		body: JSON.stringify(body),
 	});
 
 	if (!addResp.ok) return null;
