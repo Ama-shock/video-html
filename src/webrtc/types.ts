@@ -36,6 +36,7 @@ export type HostWelcome = {
 	hostProfile?: { userId: string; username: string };
 	videoQuality?: string;
 	controllerAssignment: number | null;
+	playerNumber?: number | null;
 };
 
 /** ホスト → ゲスト: 入室拒否 */

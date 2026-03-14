@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import jsQR from 'jsqr';
 import { saveSettings } from '../../db/settings';
 import type { AppDispatch, RootState } from '../../store';
 import { setAudioDevice, setResolution, setVideoDevice } from '../../store/appSlice';
@@ -90,6 +91,39 @@ export default function VideoMenu() {
 
 	const isStarted = (window as any).__vidcapt?.started ?? false;
 
+	// QR コード読み取り
+	const [qrResult, setQrResult] = useState<string | null>(null);
+	const [qrScanning, setQrScanning] = useState(false);
+
+	const scanQrCode = useCallback(() => {
+		const vc = (window as any).__vidcapt;
+		const video = vc?.videoRef?.current as HTMLVideoElement | undefined;
+		if (!video || !video.videoWidth) return;
+
+		setQrScanning(true);
+		setQrResult(null);
+
+		const canvas = document.createElement('canvas');
+		canvas.width = video.videoWidth;
+		canvas.height = video.videoHeight;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) {
+			setQrScanning(false);
+			return;
+		}
+		ctx.drawImage(video, 0, 0);
+		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		const code = jsQR(imageData.data, imageData.width, imageData.height);
+		setQrScanning(false);
+		if (code) {
+			setQrResult(code.data);
+		} else {
+			setQrResult('');
+		}
+	}, []);
+
+	const isUrl = qrResult ? /^https?:\/\//i.test(qrResult) : false;
+
 	return (
 		<div className="menu-section">
 			{/* Start capture — top of menu, hidden once started */}
@@ -166,6 +200,35 @@ export default function VideoMenu() {
 					</div>
 
 				</>
+			)}
+
+			{/* QR コード読み取り — キャプチャ中のみ表示 */}
+			{isHost && isStarted && (
+				<div className="menu-card">
+					<h4>QR コード読み取り</h4>
+					<button
+						type="button"
+						className="btn btn-secondary"
+						onClick={scanQrCode}
+						disabled={qrScanning}
+					>
+						{qrScanning ? 'スキャン中...' : '画面からQRコードを読み取る'}
+					</button>
+					{qrResult === '' && (
+						<p className="empty-msg">QR コードが見つかりませんでした</p>
+					)}
+					{qrResult && (
+						<div className="qr-result">
+							{isUrl ? (
+								<a href={qrResult} target="_blank" rel="noopener noreferrer" className="qr-link">
+									{qrResult}
+								</a>
+							) : (
+								<p className="qr-text">{qrResult}</p>
+							)}
+						</div>
+					)}
+				</div>
 			)}
 
 		</div>

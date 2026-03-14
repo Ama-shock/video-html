@@ -16,6 +16,7 @@ import {
 import { applyKeymap, mapAxes } from '../../gamepad/relay';
 import { store } from '../../store';
 import { getOrCreateClient } from '../../switchBtWs/clientCache';
+import { controllerPlayerMap } from '../../switchBtWs/types';
 import { createRoomKey, fetchGatewayInfo, pushToBundle } from '../../webpush/gateway';
 import { subscribeToPush } from '../../webpush/subscription';
 import { setGuestInput } from '../../webrtc/guestInputStore';
@@ -114,8 +115,15 @@ export default function HostMenu() {
 				);
 				const existing = await loadGuest(req.userId);
 				if (existing?.allowed) {
-					await hostRtcRef.current?.handleJoinRequest(req, 'high');
-					dispatch(allowGuest({ userId: req.userId, controllerId: existing.controllerId }));
+					// 復元した controllerId に対応する playerNumber を取得
+					const cid = existing.controllerId;
+					let assignment: { controllerId: number; playerNumber: number | null } | undefined;
+					if (cid != null) {
+						const pMap = controllerPlayerMap(store.getState().dongle.controllers);
+						assignment = { controllerId: cid, playerNumber: pMap.get(cid) ?? null };
+					}
+					await hostRtcRef.current?.handleJoinRequest(req, 'high', assignment);
+					dispatch(allowGuest({ userId: req.userId, controllerId: cid }));
 				}
 			}
 		};

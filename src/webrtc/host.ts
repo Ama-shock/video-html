@@ -71,7 +71,7 @@ export class HostWebRTC {
 	 * Phase 1: DataChannel のみの Answer を WebPush で返す。
 	 * メディアトラックはまだ追加しない。
 	 */
-	async handleJoinRequest(req: JoinRequest, videoQuality?: string): Promise<void> {
+	async handleJoinRequest(req: JoinRequest, videoQuality?: string, assignment?: { controllerId: number; playerNumber: number | null }): Promise<void> {
 		const { userId, guestBundle, offerSdp } = req;
 
 		this.disconnectGuest(userId);
@@ -82,12 +82,14 @@ export class HostWebRTC {
 		const commandChannel = pc.createDataChannel('host_command', { ordered: true });
 
 		// DC open → HostWelcome 送信 + Phase 2 メディアネゴシエーション開始
+		const assignmentCapture = assignment ?? null;
 		commandChannel.onopen = () => {
 			const welcome: HostWelcome = {
 				type: 'host_welcome',
 				hostProfile: this.hostProfile ?? undefined,
 				videoQuality,
-				controllerAssignment: null,
+				controllerAssignment: assignmentCapture?.controllerId ?? null,
+				playerNumber: assignmentCapture?.playerNumber ?? null,
 			};
 			commandChannel.send(JSON.stringify(welcome));
 			// メディアストリームがあれば Phase 2 開始

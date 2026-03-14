@@ -28,6 +28,7 @@ export default function GuestMenu() {
 	const dispatch = useDispatch<AppDispatch>();
 	const status = useSelector((s: RootState) => s.guest.status);
 	const controllerId = useSelector((s: RootState) => s.guest.controllerId);
+	const playerNumber = useSelector((s: RootState) => s.guest.playerNumber);
 	const hostProfile = useSelector((s: RootState) => s.guest.hostProfile);
 	const videoQuality = useSelector((s: RootState) => s.guest.videoQuality);
 	const peers = useSelector((s: RootState) => s.guest.peers);
@@ -115,7 +116,8 @@ export default function GuestMenu() {
 						if (hp) dispatch(setHostProfile(hp));
 						if (typeof cmd.videoQuality === 'string') dispatch(setVideoQuality(cmd.videoQuality));
 						if (typeof cmd.controllerAssignment === 'number') {
-							dispatch(setControllerAssignment({ controllerId: cmd.controllerAssignment, playerNumber: null }));
+							const pn = typeof cmd.playerNumber === 'number' ? cmd.playerNumber : null;
+							dispatch(setControllerAssignment({ controllerId: cmd.controllerAssignment, playerNumber: pn }));
 						}
 					} else if (cmd.type === 'controller_assignment') {
 						dispatch(setControllerAssignment({
@@ -207,7 +209,9 @@ export default function GuestMenu() {
 						)}
 					</div>
 					{controllerId !== null && (
-						<p className="hint">コントローラー #{controllerId} として接続中</p>
+						<p className="hint">
+							{playerNumber ? `P${playerNumber}` : `コントローラー #${controllerId}`} として接続中
+						</p>
 					)}
 					<button type="button" className="btn btn-danger btn-sm" onClick={handleLeave}>
 						切断
