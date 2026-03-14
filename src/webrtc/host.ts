@@ -274,6 +274,16 @@ export class HostWebRTC {
 		}
 	}
 
+	/** ゲストにコマンドを送信する。 */
+	sendCommand(userId: string, cmd: object): void {
+		const session = this.sessions.get(userId);
+		if (session?.commandChannel?.readyState === 'open') {
+			try {
+				session.commandChannel.send(JSON.stringify(cmd));
+			} catch { /* ignore */ }
+		}
+	}
+
 	async getGuestStats(userId: string): Promise<ConnectionStats | null> {
 		const session = this.sessions.get(userId);
 		if (!session) return null;

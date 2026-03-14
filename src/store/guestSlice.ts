@@ -14,15 +14,19 @@ export type HostProfile = {
 	username: string;
 };
 
+export type SelectedDevice = { type: 'gamepad'; index: number } | { type: 'keyboard' } | null;
+
 type GuestState = {
 	status: GuestConnectionStatus;
 	roomKey: string; // 入力した部屋鍵
 	hostStream: boolean; // ホストの映像を受信中か
 	controllerId: number | null; // ホストから割り当てられたコントローラー ID
+	playerNumber: number | null; // P1〜P4 のプレイヤー番号
 	hostProfile: HostProfile | null; // 接続先ホストの情報
 	videoQuality: string | null; // ホストから通知された受信映像品質
 	peers: PeerInfo[]; // 同室の他ゲスト
 	error: string | null;
+	selectedDevice: SelectedDevice; // ホストに送信する入力デバイス
 };
 
 const initialState: GuestState = {
@@ -30,10 +34,12 @@ const initialState: GuestState = {
 	roomKey: '',
 	hostStream: false,
 	controllerId: null,
+	playerNumber: null,
 	hostProfile: null,
 	videoQuality: null,
 	peers: [],
 	error: null,
+	selectedDevice: null,
 };
 
 const guestSlice = createSlice({
@@ -50,8 +56,9 @@ const guestSlice = createSlice({
 		setHostStream(state, action: PayloadAction<boolean>) {
 			state.hostStream = action.payload;
 		},
-		setControllerAssignment(state, action: PayloadAction<number | null>) {
-			state.controllerId = action.payload;
+		setControllerAssignment(state, action: PayloadAction<{ controllerId: number | null; playerNumber: number | null }>) {
+			state.controllerId = action.payload.controllerId;
+			state.playerNumber = action.payload.playerNumber;
 		},
 		setHostProfile(state, action: PayloadAction<HostProfile | null>) {
 			state.hostProfile = action.payload;
@@ -62,6 +69,9 @@ const guestSlice = createSlice({
 		setPeers(state, action: PayloadAction<PeerInfo[]>) {
 			state.peers = action.payload;
 		},
+		setSelectedDevice(state, action: PayloadAction<SelectedDevice>) {
+			state.selectedDevice = action.payload;
+		},
 		setError(state, action: PayloadAction<string>) {
 			state.status = 'error';
 			state.error = action.payload;
@@ -70,14 +80,16 @@ const guestSlice = createSlice({
 			state.status = 'idle';
 			state.hostStream = false;
 			state.controllerId = null;
+			state.playerNumber = null;
 			state.hostProfile = null;
 			state.videoQuality = null;
 			state.peers = [];
 			state.error = null;
+			state.selectedDevice = null;
 		},
 	},
 });
 
-export const { setRoomKey, setStatus, setHostStream, setControllerAssignment, setHostProfile, setVideoQuality, setPeers, setError, reset } =
+export const { setRoomKey, setStatus, setHostStream, setControllerAssignment, setHostProfile, setVideoQuality, setPeers, setSelectedDevice, setError, reset } =
 	guestSlice.actions;
 export default guestSlice.reducer;

@@ -20,6 +20,27 @@ services:
       retries: 30
       start_period: 60s
 
+  # Cloudflare Workers デプロイ
+  # 使い方:
+  #   docker compose --profile deploy run --rm --service-ports deploy login  # 初回ログイン
+  #   docker compose --profile deploy run --rm deploy                        # デプロイ
+  #   CLOUDFLARE_API_TOKEN=xxx docker compose --profile deploy run --rm deploy
+  deploy:
+    image: node:22-slim
+    working_dir: /app
+    entrypoint: ["sh", "deploy.sh"]
+    ports:
+      - "8976:8976"   # wrangler login OAuth コールバック用
+    volumes:
+      - .:/app
+      - deploy_modules:/app/node_modules
+      - wrangler_cache:/root/.wrangler
+    environment:
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+      - VAPID_PRIVATE_KEY_D=${VAPID_PRIVATE_KEY_D:-}
+    profiles:
+      - deploy
+
   # E2E テスト (ヘッドレス Chromium)
   e2e:
     build:
@@ -42,4 +63,5 @@ volumes:
   app_modules:
   app_data:
   wrangler_cache:
+  deploy_modules:
   e2e_modules:

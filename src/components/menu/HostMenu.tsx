@@ -13,10 +13,15 @@ import {
 	updateGuestConnection,
 	updateGuestUsername,
 } from '../../store/hostSlice';
+import { applyKeymap, mapAxes } from '../../gamepad/relay';
+import { store } from '../../store';
+import { getOrCreateClient } from '../../switchBtWs/clientCache';
 import { createRoomKey, fetchGatewayInfo, pushToBundle } from '../../webpush/gateway';
 import { subscribeToPush } from '../../webpush/subscription';
+import { setGuestInput } from '../../webrtc/guestInputStore';
 import { HostWebRTC } from '../../webrtc/host';
-import type { JoinRequest } from '../../webrtc/types';
+import { setHostRtc } from '../../webrtc/hostConnection';
+import type { ControllerInput, JoinRequest } from '../../webrtc/types';
 import GuestList from '../host/GuestList';
 import KnownGuestList from '../host/KnownGuestList';
 import RoomKeyDisplay from '../host/RoomKeyDisplay';
@@ -146,10 +151,20 @@ export default function HostMenu() {
 						setTimeout(() => hostRtcRef.current?.broadcastGuestList(), state === 'connected' ? 500 : 0);
 					}
 				},
-				onControllerInput: (userId, _input) => {
-					const guest = guests.find((g) => g.userId === userId);
+				onControllerInput: (userId, input) => {
+					// ゲスト入力を可視化用ストアに保存
+					setGuestInput(userId, { buttons: input.buttons, axes: input.axes });
+
+					// 割り当てられたコントローラーに転送
+					const state = store.getState();
+					const guest = state.host.guests.find((g) => g.userId === userId);
 					if (guest?.controllerId != null) {
-						// TODO: switch-bt-ws へ転送
+						const wsPort = state.app.switchBtWsPort;
+						const client = getOrCreateClient(`ws://localhost:${wsPort}`, guest.controllerId);
+						const keymap = state.gamepad.keymap;
+						const buttonStatus = applyKeymap(input.buttons, keymap);
+						const axes = mapAxes(input.axes);
+						client.sendGamepadInput(buttonStatus, axes);
 					}
 				},
 				onGuestProfile: (userId, profile) => {
@@ -163,6 +178,7 @@ export default function HostMenu() {
 				rtc.setLocalStream(vc.streamRef.current);
 			}
 			hostRtcRef.current = rtc;
+			setHostRtc(rtc);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		}
@@ -184,6 +200,7 @@ export default function HostMenu() {
 	const handleCloseRoom = () => {
 		hostRtcRef.current?.disconnectAll();
 		hostRtcRef.current = null;
+		setHostRtc(null);
 		dispatch(closeRoom());
 	};
 

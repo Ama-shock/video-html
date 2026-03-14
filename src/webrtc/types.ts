@@ -58,8 +58,15 @@ export type ControllerInput = {
 	axes: number[];
 };
 
+/** ホスト → ゲスト: コントローラー割り当て変更通知 */
+export type ControllerAssignmentCommand = {
+	type: 'controller_assignment';
+	controllerId: number | null;
+	playerNumber: number | null; // P1〜P4 (null = 未割り当て)
+};
+
 /** WebRTC データチャネル経由のホストコマンド (ホスト → ゲスト) */
-export type HostCommand = QualityChangeCommand | GuestListCommand | HostWelcome;
+export type HostCommand = QualityChangeCommand | GuestListCommand | HostWelcome | ControllerAssignmentCommand;
 
 export type QualityChangeCommand = {
 	type: 'quality_change';

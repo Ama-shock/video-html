@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { GamepadState } from '../../gamepad';
 import { addGamepadListener, removeGamepadListener, startGamepadPolling } from '../../gamepad';
-import type { AppDispatch, RootState } from '../../store';
+import {
+	addKeyboardListener,
+	KEYBOARD_GAMEPAD_INDEX,
+	removeKeyboardListener,
+	startKeyboardListening,
+	stopKeyboardListening,
+} from '../../keyboard/index';
+import { store, type AppDispatch, type RootState } from '../../store';
 import { setMenuOpen, setMenuSection } from '../../store/appSlice';
 import {
 	setHostStream,
@@ -20,6 +27,7 @@ export default function GuestMainView() {
 	const status = useSelector((s: RootState) => s.guest.status);
 	const hostStream = useSelector((s: RootState) => s.guest.hostStream);
 	const controllerId = useSelector((s: RootState) => s.guest.controllerId);
+	const playerNumber = useSelector((s: RootState) => s.guest.playerNumber);
 
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const streamRef = useRef<MediaStream | null>(null);
@@ -74,21 +82,42 @@ export default function GuestMainView() {
 		return () => navigator.serviceWorker.removeEventListener('message', handleMessage);
 	}, [dispatch]);
 
-	// ゲームパッドリレー (WebRTC データチャネル経由)
+	// ゲームパッド/キーボードリレー (WebRTC データチャネル経由)
+	// selectedDevice の変更で再構築（stale closure 回避のため store.getState() も併用）
+	const selectedDevice = useSelector((s: RootState) => s.guest.selectedDevice);
 	useEffect(() => {
 		const rtc = getGuestRtc();
 		if (status !== 'connected' || !rtc) return;
-		startGamepadPolling();
-		const handler = (state: GamepadState) => {
+
+		const send = (state: GamepadState) => {
+			const sel = store.getState().guest.selectedDevice;
+			if (!sel) return;
+			if (sel.type === 'gamepad' && state.index !== sel.index) return;
+			if (sel.type === 'keyboard' && state.index !== KEYBOARD_GAMEPAD_INDEX) return;
 			rtc.sendControllerInput({
 				type: 'controller_input',
 				buttons: state.buttons,
 				axes: state.axes,
 			});
 		};
-		addGamepadListener(handler);
-		return () => removeGamepadListener(handler);
-	}, [status]);
+
+		const cleanups: (() => void)[] = [];
+
+		// ゲームパッドリスナー
+		startGamepadPolling();
+		addGamepadListener(send);
+		cleanups.push(() => removeGamepadListener(send));
+
+		// キーボードリスナー
+		startKeyboardListening();
+		addKeyboardListener(send);
+		cleanups.push(() => {
+			removeKeyboardListener(send);
+			stopKeyboardListening();
+		});
+
+		return () => { for (const fn of cleanups) fn(); };
+	}, [status, selectedDevice]);
 
 	const handleUnmute = () => {
 		if (videoRef.current) {
@@ -128,13 +157,18 @@ export default function GuestMainView() {
 			)}
 			{showVideo && controllerId !== null && (
 				<div className="guest-controller-badge">
-					コントローラー #{controllerId}
+					{playerNumber ? `P${playerNumber}` : `コントローラー #${controllerId}`}
 				</div>
 			)}
 			{showWaiting && (
 				<div className="guest-prompt">
 					<div className="spinner" />
 					<p>接続済み — 映像待機中</p>
+					{controllerId !== null && (
+						<p className="guest-controller-badge inline">
+							{playerNumber ? `P${playerNumber}` : `コントローラー #${controllerId}`}
+						</p>
+					)}
 				</div>
 			)}
 			{showIdle && (

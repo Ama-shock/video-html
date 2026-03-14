@@ -107,14 +107,21 @@ export default function GuestMenu() {
 					}
 				},
 				onControllerAssignment: (cid) => {
-					dispatch(setControllerAssignment(cid));
+					dispatch(setControllerAssignment({ controllerId: cid, playerNumber: null }));
 				},
 				onHostCommand: (cmd) => {
 					if (cmd.type === 'host_welcome') {
 						const hp = cmd.hostProfile as { userId: string; username: string } | undefined;
 						if (hp) dispatch(setHostProfile(hp));
 						if (typeof cmd.videoQuality === 'string') dispatch(setVideoQuality(cmd.videoQuality));
-						if (typeof cmd.controllerAssignment === 'number') dispatch(setControllerAssignment(cmd.controllerAssignment));
+						if (typeof cmd.controllerAssignment === 'number') {
+							dispatch(setControllerAssignment({ controllerId: cmd.controllerAssignment, playerNumber: null }));
+						}
+					} else if (cmd.type === 'controller_assignment') {
+						dispatch(setControllerAssignment({
+							controllerId: typeof cmd.controllerId === 'number' ? cmd.controllerId : null,
+							playerNumber: typeof cmd.playerNumber === 'number' ? cmd.playerNumber : null,
+						}));
 					} else if (cmd.type === 'quality_change' && typeof cmd.videoQuality === 'string') {
 						dispatch(setVideoQuality(cmd.videoQuality));
 					} else if (cmd.type === 'guest_list' && Array.isArray(cmd.guests)) {

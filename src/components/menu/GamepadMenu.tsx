@@ -22,25 +22,18 @@ import {
 	setKeymap,
 	setRelayActive,
 } from '../../store/gamepadSlice';
+import { type SelectedDevice, setSelectedDevice } from '../../store/guestSlice';
 import { type GuestStatus, setGuestController } from '../../store/hostSlice';
-import { SwitchBtWsClient } from '../../switchBtWs/client';
+import { getOrCreateClient } from '../../switchBtWs/clientCache';
+import { getHostRtc } from '../../webrtc/hostConnection';
 import type { ConnectionMapEntry, Controller } from '../../switchBtWs/types';
 import { controllerPlayerMap, dongleKey } from '../../switchBtWs/types';
 import InputVisualizer, { useGamepadInput, useKeyboardInput } from '../gamepad/InputVisualizer';
+import { useGuestInput } from '../../webrtc/guestInputStore';
 import KeyboardKeymapEditor from '../gamepad/KeyboardKeymapEditor';
 import KeymapEditor from '../gamepad/KeymapEditor';
 import ControllerList from '../settings/ControllerList';
 
-const clientCache = new Map<number, SwitchBtWsClient>();
-
-function getClient(wsBaseUrl: string, controllerId: number): SwitchBtWsClient {
-	const cached = clientCache.get(controllerId);
-	if (cached) return cached;
-	const client = new SwitchBtWsClient(wsBaseUrl, controllerId);
-	client.connect();
-	clientCache.set(controllerId, client);
-	return client;
-}
 
 /** ドラッグで渡す入力ソースの種別 */
 type InputSource =
@@ -65,6 +58,7 @@ export default function GamepadMenu() {
 
 	const isGuest = mode === 'guest';
 	const error = useSelector((s: RootState) => s.dongle.error);
+	const selectedDevice = useSelector((s: RootState) => s.guest.selectedDevice);
 
 	const tabs = isGuest
 		? (['devices', 'keymap', 'kb-keymap'] as const)
@@ -136,15 +130,22 @@ export default function GamepadMenu() {
 		const dKey = dongleKey(controller.vid, controller.pid, controller.instance);
 
 		if (source.type === 'gamepad') {
-			const client = getClient(`ws://localhost:${wsPort}`, controllerId);
+			const client = getOrCreateClient(`ws://localhost:${wsPort}`, controllerId);
 			startRelay({ gamepadIndex: source.index, client, keymap });
 			dispatch(setRelayActive({ index: source.index, active: true, controllerId }));
 		} else if (source.type === 'keyboard') {
-			const client = getClient(`ws://localhost:${wsPort}`, controllerId);
+			const client = getOrCreateClient(`ws://localhost:${wsPort}`, controllerId);
 			startRelay({ gamepadIndex: KEYBOARD_GAMEPAD_INDEX, client, keymap });
 			dispatch(setKeyboardRelayActive({ active: true, controllerId }));
 		} else {
 			dispatch(setGuestController({ userId: source.userId, controllerId }));
+			// ゲストにコントローラー割り当てを通知（P番号付き）
+			const pNum = playerMap.get(controllerId) ?? null;
+			getHostRtc()?.sendCommand(source.userId, {
+				type: 'controller_assignment',
+				controllerId,
+				playerNumber: pNum,
+			});
 		}
 
 		// 接続マップを永続化
@@ -175,6 +176,11 @@ export default function GamepadMenu() {
 		const guest = guests.find((g) => g.controllerId === controllerId);
 		if (guest) {
 			dispatch(setGuestController({ userId: guest.userId, controllerId: null }));
+			getHostRtc()?.sendCommand(guest.userId, {
+				type: 'controller_assignment',
+				controllerId: null,
+				playerNumber: null,
+			});
 		}
 	};
 
@@ -233,10 +239,17 @@ export default function GamepadMenu() {
 				))}
 			</div>
 
-			{/* Guest mode: device list with input viz */}
+			{/* Guest mode: device list with input viz + selection */}
 			{tab === 'devices' && isGuest && (
 				<div className="gamepad-list">
-					<GuestDeviceRow type="keyboard" label="Keyboard" />
+					<GuestDeviceRow
+						type="keyboard"
+						label="Keyboard"
+						selected={selectedDevice?.type === 'keyboard'}
+						onSelect={() => dispatch(setSelectedDevice(
+							selectedDevice?.type === 'keyboard' ? null : { type: 'keyboard' },
+						))}
+					/>
 					{gamepads.length === 0 ? (
 						<p className="empty-msg">
 							ゲームパッドが接続されていません。ボタンを押して認識させてください。
@@ -248,6 +261,12 @@ export default function GamepadMenu() {
 								type="gamepad"
 								label={`#${gp.index} ${gp.id.slice(0, 30)}`}
 								gamepadIndex={gp.index}
+								selected={selectedDevice?.type === 'gamepad' && selectedDevice.index === gp.index}
+								onSelect={() => dispatch(setSelectedDevice(
+									selectedDevice?.type === 'gamepad' && selectedDevice.index === gp.index
+										? null
+										: { type: 'gamepad', index: gp.index },
+								))}
 							/>
 						))
 					)}
@@ -378,22 +397,26 @@ function sourceSubLabel(src: InputSource): string {
 	return `ローカル #${src.index}`;
 }
 
-/** ゲスト側デバイス行（入力ビジュアライザ付き） */
+/** ゲスト側デバイス行（入力ビジュアライザ + 選択ボタン付き） */
 function GuestDeviceRow({
 	type,
 	label,
 	gamepadIndex,
+	selected,
+	onSelect,
 }: {
 	type: 'keyboard' | 'gamepad';
 	label: string;
 	gamepadIndex?: number;
+	selected?: boolean;
+	onSelect?: () => void;
 }) {
 	const gpInput = useGamepadInput(type === 'gamepad' ? (gamepadIndex ?? null) : null);
 	const kbInput = useKeyboardInput();
 	const input = type === 'keyboard' ? kbInput : gpInput;
 
 	return (
-		<div className="gamepad-row">
+		<div className={`gamepad-row ${selected ? 'selected' : ''}`}>
 			<div className="gamepad-info">
 				<span className="gamepad-index">{type === 'keyboard' ? '⌨' : `#${gamepadIndex}`}</span>
 				<span className="gamepad-id" title={label}>
@@ -401,6 +424,13 @@ function GuestDeviceRow({
 				</span>
 			</div>
 			<InputVisualizer input={input} />
+			<button
+				type="button"
+				className={`btn btn-sm ${selected ? 'btn-primary' : 'btn-secondary'}`}
+				onClick={onSelect}
+			>
+				{selected ? '送信中' : '選択'}
+			</button>
 		</div>
 	);
 }
@@ -426,7 +456,9 @@ function DongleSlot({
 	const gamepadIndex = assigned?.type === 'gamepad' ? assigned.index : null;
 	const gpInput = useGamepadInput(gamepadIndex);
 	const kbInput = useKeyboardInput();
-	const input = assigned?.type === 'keyboard' ? kbInput : gpInput;
+	const guestUserId = assigned?.type === 'guest' ? assigned.userId : null;
+	const guestInput = useGuestInput(guestUserId);
+	const input = assigned?.type === 'keyboard' ? kbInput : assigned?.type === 'guest' ? guestInput : gpInput;
 
 	const handleDragOver = (e: React.DragEvent) => {
 		e.preventDefault();
@@ -490,7 +522,9 @@ function DraggableSource({ source }: { source: InputSource }) {
 	const gamepadIndex = source.type === 'gamepad' ? source.index : null;
 	const gpInput = useGamepadInput(gamepadIndex);
 	const kbInput = useKeyboardInput();
-	const input = source.type === 'keyboard' ? kbInput : gpInput;
+	const guestUserId = source.type === 'guest' ? source.userId : null;
+	const guestInput = useGuestInput(guestUserId);
+	const input = source.type === 'keyboard' ? kbInput : source.type === 'guest' ? guestInput : gpInput;
 
 	const handleDragStart = (e: React.DragEvent) => {
 		e.dataTransfer.setData('application/json', JSON.stringify(source));
