@@ -6,12 +6,9 @@
  */
 
 import { pushToBundle } from '../webpush/gateway';
+import { getIceConfig } from './iceConfig';
 import { type ConnectionStats, getConnectionStats } from './stats';
 import type { ControllerInput, GuestListCommand, GuestProfile, HostCommand, HostWelcome, JoinAccepted, JoinRejected, JoinRequest, PeerInfo } from './types';
-
-const RTC_CONFIG: RTCConfiguration = {
-	iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }],
-};
 
 /** 品質ごとの映像ビットレート上限 (bps) */
 const QUALITY_BITRATE: Record<string, number> = {
@@ -76,7 +73,8 @@ export class HostWebRTC {
 
 		this.disconnectGuest(userId);
 
-		const pc = new RTCPeerConnection(RTC_CONFIG);
+		const iceConfig = await getIceConfig();
+		const pc = new RTCPeerConnection(iceConfig);
 
 		// ホスト→ゲスト用コマンドチャネル作成
 		const commandChannel = pc.createDataChannel('host_command', { ordered: true });
@@ -319,13 +317,22 @@ async function applyBitrateLimit(pc: RTCPeerConnection, quality: string): Promis
 function waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
 	if (pc.iceGatheringState === 'complete') return Promise.resolve();
 	return new Promise((resolve) => {
-		const check = () => {
-			if (pc.iceGatheringState === 'complete') {
-				pc.removeEventListener('icegatheringstatechange', check);
-				resolve();
-			}
+		let hasRelay = false;
+		const done = () => {
+			pc.removeEventListener('icegatheringstatechange', onState);
+			pc.removeEventListener('icecandidate', onCandidate);
+			resolve();
 		};
-		pc.addEventListener('icegatheringstatechange', check);
-		setTimeout(resolve, 5000);
+		const onState = () => {
+			if (pc.iceGatheringState === 'complete') done();
+		};
+		const onCandidate = (e: RTCPeerConnectionIceEvent) => {
+			if (e.candidate?.candidate?.includes('typ relay')) hasRelay = true;
+		};
+		pc.addEventListener('icegatheringstatechange', onState);
+		pc.addEventListener('icecandidate', onCandidate);
+		// relay 候補が出るまで最大 15 秒、出なければ 5 秒で打ち切り
+		setTimeout(() => { if (hasRelay) return; setTimeout(done, 0); }, 5000);
+		setTimeout(done, 15000);
 	});
 }

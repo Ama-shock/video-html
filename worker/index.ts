@@ -24,6 +24,8 @@ import { decode_credential_bundle_wasm, encode_credential_bundle_wasm } from './
 export interface Env {
     VAPID_SUBJECT: string;
     VAPID_PRIVATE_KEY_D: string;
+    TURN_KEY_ID?: string;
+    TURN_KEY_API_TOKEN?: string;
     ASSETS: Fetcher;
 }
 
@@ -71,7 +73,7 @@ async function getDerivedKeys(env: Env): Promise<{ publicKey: string; gatewayKey
 // ---------------------------------------------------------------------------
 
 // API パス一覧
-const API_PATHS = new Set(['/gateway-info', '/vapid-public-key', '/gateway-key-id', '/push', '/test-roundtrip']);
+const API_PATHS = new Set(['/gateway-info', '/vapid-public-key', '/gateway-key-id', '/push', '/turn-credentials', '/test-roundtrip']);
 
 export default {
     async fetch(request: Request, env: Env): Promise<Response> {
@@ -111,6 +113,11 @@ export default {
 
         if (request.method === 'POST' && url.pathname === '/push') {
             return handlePush(request, env, keys, origin, selfOrigin);
+        }
+
+        // Cloudflare Calls TURN クレデンシャル生成
+        if (request.method === 'GET' && url.pathname === '/turn-credentials') {
+            return handleTurnCredentials(env, origin, selfOrigin);
         }
 
         // デバッグ用: encode → decode ラウンドトリップテスト
@@ -155,6 +162,52 @@ export default {
         return corsResponse(json({ error: 'Not Found' }), 404, origin, selfOrigin);
     },
 };
+
+// ---------------------------------------------------------------------------
+// TURN credentials handler (Cloudflare Calls)
+// ---------------------------------------------------------------------------
+
+async function handleTurnCredentials(
+    env: Env,
+    origin: string,
+    allowedOrigin: string,
+): Promise<Response> {
+    if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
+        return corsResponse(json({ iceServers: [] }), 200, origin, allowedOrigin);
+    }
+
+    try {
+        const resp = await fetch(
+            `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${env.TURN_KEY_API_TOKEN}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ ttl: 86400 }),
+            },
+        );
+
+        if (!resp.ok) {
+            const text = await resp.text();
+            console.error('TURN credential generation failed:', resp.status, text);
+            return corsResponse(json({ iceServers: [] }), 200, origin, allowedOrigin);
+        }
+
+        const data = await resp.json() as {
+            iceServers?: { urls: string[]; username: string; credential: string } | { urls: string[]; username: string; credential: string }[];
+        };
+
+        // Cloudflare Calls は単一オブジェクトで返す場合がある → 配列に正規化
+        const servers = !data.iceServers ? [] : Array.isArray(data.iceServers) ? data.iceServers : [data.iceServers];
+
+        return corsResponse(json({ iceServers: servers }), 200, origin, allowedOrigin);
+    } catch (err) {
+        console.error('TURN credential error:', err);
+        return corsResponse(json({ iceServers: [] }), 200, origin, allowedOrigin);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Push handler
