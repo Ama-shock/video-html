@@ -18,6 +18,7 @@ export type SelectedDevice = { type: 'gamepad'; index: number } | { type: 'keybo
 
 type GuestState = {
 	status: GuestConnectionStatus;
+	statusDetail: string | null; // 接続進行中の詳細ステータス
 	roomKey: string; // 入力した部屋鍵
 	hostStream: boolean; // ホストの映像を受信中か
 	controllerId: number | null; // ホストから割り当てられたコントローラー ID
@@ -31,6 +32,7 @@ type GuestState = {
 
 const initialState: GuestState = {
 	status: 'idle',
+	statusDetail: null,
 	roomKey: '',
 	hostStream: false,
 	controllerId: null,
@@ -52,6 +54,10 @@ const guestSlice = createSlice({
 		setStatus(state, action: PayloadAction<GuestConnectionStatus>) {
 			state.status = action.payload;
 			if (action.payload !== 'error') state.error = null;
+			if (action.payload === 'connected' || action.payload === 'idle') state.statusDetail = null;
+		},
+		setStatusDetail(state, action: PayloadAction<string | null>) {
+			state.statusDetail = action.payload;
 		},
 		setHostStream(state, action: PayloadAction<boolean>) {
 			state.hostStream = action.payload;
@@ -78,6 +84,7 @@ const guestSlice = createSlice({
 		},
 		reset(state) {
 			state.status = 'idle';
+			state.statusDetail = null;
 			state.hostStream = false;
 			state.controllerId = null;
 			state.playerNumber = null;
@@ -90,6 +97,6 @@ const guestSlice = createSlice({
 	},
 });
 
-export const { setRoomKey, setStatus, setHostStream, setControllerAssignment, setHostProfile, setVideoQuality, setPeers, setSelectedDevice, setError, reset } =
+export const { setRoomKey, setStatus, setStatusDetail, setHostStream, setControllerAssignment, setHostProfile, setVideoQuality, setPeers, setSelectedDevice, setError, reset } =
 	guestSlice.actions;
 export default guestSlice.reducer;

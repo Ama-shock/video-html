@@ -11,12 +11,14 @@ import {
 	removeGuest,
 	setGuestVideoQuality,
 	updateGuestConnection,
+	updateGuestConnectionDetail,
 	updateGuestUsername,
 } from '../../store/hostSlice';
 import { applyKeymap, mapAxes } from '../../gamepad/relay';
 import { store } from '../../store';
 import { getOrCreateClient } from '../../switchBtWs/clientCache';
 import { controllerPlayerMap } from '../../switchBtWs/types';
+import { ensurePushReady } from '../../webpush/ensureReady';
 import { createRoomKey, fetchGatewayInfo, pushToBundle } from '../../webpush/gateway';
 import { subscribeToPush } from '../../webpush/subscription';
 import { setGuestInput } from '../../webrtc/guestInputStore';
@@ -69,6 +71,9 @@ export default function HostMenu() {
 	const roomStatusRef = useRef(roomStatus);
 	roomStatusRef.current = roomStatus;
 
+	// 手動許可用: userId → JoinRequest を保持
+	const pendingJoinRequests = useRef(new Map<string, JoinRequest>());
+
 	// キャプチャ開始/変更時にストリームを HostWebRTC に渡す
 	useEffect(() => {
 		if (!streaming || !hostRtcRef.current) return;
@@ -103,11 +108,13 @@ export default function HostMenu() {
 					await pushToBundle(req.guestBundle, { type: 'join_rejected', reason: '部屋は開放されていません' }, 60);
 					return;
 				}
+				pendingJoinRequests.current.set(req.userId, req);
 				dispatch(
 					addPendingGuest({
 						userId: req.userId,
 						username: '', // プロフィールは DataChannel 経由で後から届く
 						connectionState: 'new',
+						connectionDetail: 'Push 受信',
 						allowed: false,
 						controllerId: null,
 						videoQuality: 'high',
@@ -122,7 +129,9 @@ export default function HostMenu() {
 						const pMap = controllerPlayerMap(store.getState().dongle.controllers);
 						assignment = { controllerId: cid, playerNumber: pMap.get(cid) ?? null };
 					}
+					dispatch(updateGuestConnectionDetail({ userId: req.userId, detail: '自動許可 — Answer 作成中' }));
 					await hostRtcRef.current?.handleJoinRequest(req, 'high', assignment);
+					dispatch(updateGuestConnectionDetail({ userId: req.userId, detail: 'Answer を Push 送信済み' }));
 					dispatch(allowGuest({ userId: req.userId, controllerId: cid }));
 				}
 			}
@@ -133,8 +142,7 @@ export default function HostMenu() {
 
 	/** 部屋鍵を発行（新規 or 更新共通） */
 	const issueRoomKey = async () => {
-		const swReg = await navigator.serviceWorker.getRegistration();
-		if (!swReg) throw new Error('Service worker が登録されていません');
+		const swReg = await ensurePushReady();
 		const gateway = await fetchGatewayInfo();
 		const sub = await subscribeToPush(swReg);
 		const expirationSec = Math.floor(Date.now() / 1000) + ROOM_KEY_TTL_SEC;
@@ -150,6 +158,13 @@ export default function HostMenu() {
 			const rtc = new HostWebRTC({
 				onGuestStateChange: (userId, state) => {
 					dispatch(updateGuestConnection({ userId, connectionState: state }));
+					const labels: Record<string, string> = {
+						connecting: 'WebRTC 接続試行中',
+						connected: '接続完了',
+						disconnected: '切断検出',
+						failed: '接続失敗',
+					};
+					if (labels[state]) dispatch(updateGuestConnectionDetail({ userId, detail: labels[state] }));
 					if (state === 'failed' || state === 'closed') {
 						dispatch(removeGuest(userId));
 					}
@@ -213,8 +228,21 @@ export default function HostMenu() {
 	};
 
 	const handleAllowGuest = async (userId: string) => {
+		const req = pendingJoinRequests.current.get(userId);
 		dispatch(allowGuest({ userId, controllerId: null }));
 		const pending = pendingRequests.find((g) => g.userId === userId);
+
+		if (req && hostRtcRef.current) {
+			dispatch(updateGuestConnectionDetail({ userId, detail: 'Answer 作成中...' }));
+			try {
+				await hostRtcRef.current.handleJoinRequest(req, 'high');
+				dispatch(updateGuestConnectionDetail({ userId, detail: 'Answer を Push 送信済み' }));
+			} catch (err) {
+				dispatch(updateGuestConnectionDetail({ userId, detail: `Answer 送信失敗: ${err instanceof Error ? err.message : String(err)}` }));
+			}
+			pendingJoinRequests.current.delete(userId);
+		}
+
 		if (!pending) return;
 		await saveGuest({
 			userId,

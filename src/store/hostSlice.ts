@@ -12,6 +12,7 @@ export type GuestStatus = {
 	userId: string;
 	username: string;
 	connectionState: RTCPeerConnectionState;
+	connectionDetail: string | null;
 	allowed: boolean;
 	controllerId: number | null;
 	videoQuality: VideoQuality;
@@ -86,7 +87,19 @@ const hostSlice = createSlice({
 			action: PayloadAction<{ userId: string; connectionState: RTCPeerConnectionState }>,
 		) {
 			const guest = state.guests.find((g) => g.userId === action.payload.userId);
-			if (guest) guest.connectionState = action.payload.connectionState;
+			if (guest) {
+				guest.connectionState = action.payload.connectionState;
+				if (action.payload.connectionState === 'connected') guest.connectionDetail = null;
+			}
+		},
+		updateGuestConnectionDetail(
+			state,
+			action: PayloadAction<{ userId: string; detail: string }>,
+		) {
+			const guest = state.guests.find((g) => g.userId === action.payload.userId);
+			if (guest) guest.connectionDetail = action.payload.detail;
+			const pending = state.pendingRequests.find((g) => g.userId === action.payload.userId);
+			if (pending) pending.connectionDetail = action.payload.detail;
 		},
 		setGuestController(
 			state,
@@ -125,6 +138,7 @@ export const {
 	rejectGuest,
 	removeGuest,
 	updateGuestConnection,
+	updateGuestConnectionDetail,
 	setGuestController,
 	setGuestVideoQuality,
 	updateGuestUsername,

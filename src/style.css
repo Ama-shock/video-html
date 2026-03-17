@@ -762,6 +762,10 @@ input[type="range"] {
 .guest-state {
 	font-size: 10px;
 }
+.guest-detail {
+	font-size: 10px;
+	color: var(--text-dim);
+}
 .guest-controller {
 	display: flex;
 	flex-direction: column;

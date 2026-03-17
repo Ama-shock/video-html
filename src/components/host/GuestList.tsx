@@ -76,6 +76,9 @@ function GuestCard({
 						{rttMs !== null && <span className="rtt-badge">{rttMs} ms</span>}
 					</span>
 				)}
+				{guest.connectionDetail && (
+					<span className="guest-detail">{guest.connectionDetail}</span>
+				)}
 			</div>
 
 			<div className="guest-actions">

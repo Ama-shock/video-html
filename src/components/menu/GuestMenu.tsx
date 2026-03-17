@@ -12,9 +12,11 @@ import {
 	setPeers,
 	setRoomKey,
 	setStatus,
+	setStatusDetail,
 	setVideoQuality,
 } from '../../store/guestSlice';
 import { VIDEO_QUALITY_LABELS, type VideoQuality } from '../../store/hostSlice';
+import { ensurePushReady } from '../../webpush/ensureReady';
 import { createRoomKey, fetchGatewayInfo, validateRoomKeyFormat } from '../../webpush/gateway';
 import { subscribeToPush } from '../../webpush/subscription';
 import { GuestWebRTC } from '../../webrtc/guest';
@@ -27,6 +29,7 @@ import { getGuestRtc, setGuestRtc } from '../../webrtc/guestConnection';
 export default function GuestMenu() {
 	const dispatch = useDispatch<AppDispatch>();
 	const status = useSelector((s: RootState) => s.guest.status);
+	const statusDetail = useSelector((s: RootState) => s.guest.statusDetail);
 	const controllerId = useSelector((s: RootState) => s.guest.controllerId);
 	const playerNumber = useSelector((s: RootState) => s.guest.playerNumber);
 	const hostProfile = useSelector((s: RootState) => s.guest.hostProfile);
@@ -93,13 +96,15 @@ export default function GuestMenu() {
 		dispatch(setRoomKey(key));
 		dispatch(setStatus('joining'));
 		try {
-			const swReg = await navigator.serviceWorker.getRegistration();
-			if (!swReg) throw new Error('Service worker が登録されていません');
+			dispatch(setStatusDetail('Push 通知を準備中...'));
+			const swReg = await ensurePushReady();
+			dispatch(setStatusDetail('ゲートウェイ情報を取得中...'));
 			const gateway = await fetchGatewayInfo();
 			const sub = await subscribeToPush(swReg);
 			const guestBundle = await createRoomKey(sub, gateway, 3600);
 			const identity = await getOrCreateIdentity();
 			const rtc = new GuestWebRTC({
+				onProgress: (detail) => dispatch(setStatusDetail(detail)),
 				onConnectionState: (state) => {
 					if (state === 'connected') dispatch(setStatus('connected'));
 					else if (state === 'failed' || state === 'closed') {
@@ -182,6 +187,7 @@ export default function GuestMenu() {
 						<span className="status-dot waiting" />
 						<span>接続中...</span>
 					</div>
+					{statusDetail && <p className="hint">{statusDetail}</p>}
 				</div>
 			)}
 
@@ -192,6 +198,7 @@ export default function GuestMenu() {
 						<span className="status-dot waiting" />
 						<span>ホストの承認待ち</span>
 					</div>
+					{statusDetail && <p className="hint">{statusDetail}</p>}
 					<button type="button" className="btn btn-danger btn-sm" onClick={handleLeave}>
 						キャンセル
 					</button>

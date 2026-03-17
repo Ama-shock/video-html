@@ -17,6 +17,7 @@ export type GuestCallbacks = {
 	onConnectionState?: (state: RTCPeerConnectionState) => void;
 	onControllerAssignment?: (controllerId: number | null) => void;
 	onHostCommand?: (cmd: { type: string; [key: string]: unknown }) => void;
+	onProgress?: (detail: string) => void;
 };
 
 export class GuestWebRTC {
@@ -43,12 +44,22 @@ export class GuestWebRTC {
 	): Promise<void> {
 		this.close();
 
+		this.callbacks.onProgress?.('TURN/STUN 設定を取得中...');
 		const iceConfig = await getIceConfig();
 		const pc = new RTCPeerConnection(iceConfig);
 		this.pc = pc;
 
 		pc.onconnectionstatechange = () => {
 			if (!this.pc) return;
+			const stateLabels: Record<string, string> = {
+				new: 'WebRTC: 初期化',
+				connecting: 'WebRTC: 接続試行中...',
+				connected: 'WebRTC: 接続確立',
+				disconnected: 'WebRTC: 切断検出',
+				failed: 'WebRTC: 接続失敗',
+				closed: 'WebRTC: 終了',
+			};
+			this.callbacks.onProgress?.(stateLabels[pc.connectionState] ?? pc.connectionState);
 			this.callbacks.onConnectionState?.(pc.connectionState);
 			if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
 				this.close();
@@ -98,10 +109,13 @@ export class GuestWebRTC {
 		this.dataChannel = dc;
 
 		// Phase 1: DataChannel のみの Offer（メディアトランシーバーなし → SDP が小さい）
+		this.callbacks.onProgress?.('Offer を作成中...');
 		const offer = await pc.createOffer();
 		await pc.setLocalDescription(offer);
 
+		this.callbacks.onProgress?.('ICE 候補を収集中...');
 		await waitForIceGathering(pc);
+		this.callbacks.onProgress?.('ICE 収集完了');
 
 		// 署名
 		const message = new TextEncoder().encode(identity.publicKeyB64 + username);
@@ -124,7 +138,9 @@ export class GuestWebRTC {
 			},
 		};
 
+		this.callbacks.onProgress?.('Push 送信中...');
 		await pushToBundle(roomKey, joinReq, 120);
+		this.callbacks.onProgress?.('Push 送信完了 — ホストの応答待ち');
 	}
 
 	/**
@@ -132,6 +148,7 @@ export class GuestWebRTC {
 	 */
 	async handleAnswer(msg: JoinAccepted): Promise<void> {
 		if (!this.pc) throw new Error('No active peer connection');
+		this.callbacks.onProgress?.('Answer 受信 — ICE 接続中...');
 		await this.pc.setRemoteDescription({ type: 'answer', sdp: msg.answerSdp });
 	}
 
