@@ -145,8 +145,11 @@ export async function disconnectDongle(apiBase: string, controllerId: number): P
 	// コントローラーリストからも即座に除外
 	store.dispatch(setControllers(controllers.filter((c) => c.id !== controllerId)));
 
-	// 管理用 WS を閉じる
+	// 管理用 WS で disconnect を送信してから閉じる
 	closeControllerWs(controllerId);
+
+	// BTStack が Switch との接続を切断する時間を確保してからコントローラーを削除
+	await new Promise((r) => setTimeout(r, 800));
 
 	try {
 		await fetch(`${apiBase}/api/controllers/${controllerId}`, { method: 'DELETE' });
@@ -296,12 +299,19 @@ export async function restoreStandardDriver(apiBase: string, vid: string, pid: s
 /** 管理用 WS マップ（controllerId → WebSocket）。切断時に閉じる。 */
 const controllerWsMap = new Map<number, WebSocket>();
 
-/** 管理用 WS を閉じる */
+/** 管理用 WS に disconnect を送ってから閉じる */
 export function closeControllerWs(controllerId: number): void {
 	const ws = controllerWsMap.get(controllerId);
 	if (ws) {
-		ws.close();
-		controllerWsMap.delete(controllerId);
+		// Switch との HID 接続を切断してから WS を閉じる
+		if (ws.readyState === WebSocket.OPEN) {
+			ws.send(JSON.stringify({ type: 'disconnect' }));
+		}
+		// BTStack の run loop がコールバックを処理する時間を確保
+		setTimeout(() => {
+			ws.close();
+			controllerWsMap.delete(controllerId);
+		}, 500);
 	}
 }
 
