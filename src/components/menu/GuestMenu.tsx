@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { unlockAudio } from '../../audio/unlock';
+import { playRumble, stopRumble } from '../../gamepad/haptic';
 import { getOrCreateIdentity } from '../../identity';
 import { generateIdenticonDataUrl } from '../../identity/identicon';
 import type { AppDispatch, RootState } from '../../store';
@@ -133,6 +134,14 @@ export default function GuestMenu() {
 						dispatch(setVideoQuality(cmd.videoQuality));
 					} else if (cmd.type === 'guest_list' && Array.isArray(cmd.guests)) {
 						dispatch(setPeers(cmd.guests as { userId: string; username: string }[]));
+					} else if (cmd.type === 'rumble') {
+						const left = typeof cmd.left === 'number' ? cmd.left : 0;
+						const right = typeof cmd.right === 'number' ? cmd.right : 0;
+						if (left > 0 || right > 0) {
+							playRumble(left, right);
+						} else {
+							stopRumble();
+						}
 					}
 				},
 			});

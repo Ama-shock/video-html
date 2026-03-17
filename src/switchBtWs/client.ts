@@ -8,6 +8,8 @@
 export type SwitchBtWsStatus = {
 	paired: boolean;
 	rumble: boolean;
+	rumble_left: number; // 0〜255
+	rumble_right: number; // 0〜255
 };
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -76,6 +78,8 @@ export class SwitchBtWsClient {
 					this.statusCb?.({
 						paired: msg.paired as boolean,
 						rumble: msg.rumble as boolean,
+						rumble_left: (msg.rumble_left as number) ?? 0,
+						rumble_right: (msg.rumble_right as number) ?? 0,
 					});
 				} else if (msg.type === 'link_keys') {
 					this.linkKeysCb?.(msg.data as string);

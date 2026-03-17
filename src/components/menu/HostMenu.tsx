@@ -17,6 +17,7 @@ import {
 import { applyKeymap, mapAxes } from '../../gamepad/relay';
 import { store } from '../../store';
 import { getOrCreateClient } from '../../switchBtWs/clientCache';
+import { onRumble, offRumble } from '../../switchBtWs/dongleService';
 import { controllerPlayerMap } from '../../switchBtWs/types';
 import { ensurePushReady } from '../../webpush/ensureReady';
 import { createRoomKey, fetchGatewayInfo, pushToBundle } from '../../webpush/gateway';
@@ -73,6 +74,25 @@ export default function HostMenu() {
 
 	// 手動許可用: userId → JoinRequest を保持
 	const pendingJoinRequests = useRef(new Map<string, JoinRequest>());
+
+	// ゲストに割り当てられたコントローラーの振動を DataChannel で転送
+	useEffect(() => {
+		if (roomStatus !== 'open') return;
+		const registeredIds = new Set<number>();
+		for (const guest of guests) {
+			if (guest.controllerId != null) {
+				const cid = guest.controllerId;
+				const uid = guest.userId;
+				registeredIds.add(cid);
+				onRumble(cid, (left, right) => {
+					hostRtcRef.current?.sendCommand(uid, { type: 'rumble', left, right });
+				});
+			}
+		}
+		return () => {
+			for (const cid of registeredIds) offRumble(cid);
+		};
+	}, [roomStatus, guests]);
 
 	// キャプチャ開始/変更時にストリームを HostWebRTC に渡す
 	useEffect(() => {

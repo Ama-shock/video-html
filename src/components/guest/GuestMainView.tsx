@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { GamepadState } from '../../gamepad';
 import { addGamepadListener, removeGamepadListener, startGamepadPolling } from '../../gamepad';
+import { setActiveGamepad } from '../../gamepad/haptic';
 import {
 	addKeyboardListener,
 	KEYBOARD_GAMEPAD_INDEX,
@@ -88,6 +89,13 @@ export default function GuestMainView() {
 	useEffect(() => {
 		const rtc = getGuestRtc();
 		if (status !== 'connected' || !rtc) return;
+
+		// 選択中のゲームパッドを Haptic API に登録
+		if (selectedDevice?.type === 'gamepad') {
+			setActiveGamepad(selectedDevice.index);
+		} else {
+			setActiveGamepad(null);
+		}
 
 		const send = (state: GamepadState) => {
 			const sel = store.getState().guest.selectedDevice;

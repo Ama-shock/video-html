@@ -66,8 +66,15 @@ export type ControllerAssignmentCommand = {
 	playerNumber: number | null; // P1〜P4 (null = 未割り当て)
 };
 
+/** ホスト → ゲスト: 振動コマンド */
+export type RumbleCommand = {
+	type: 'rumble';
+	left: number; // 0.0〜1.0
+	right: number; // 0.0〜1.0
+};
+
 /** WebRTC データチャネル経由のホストコマンド (ホスト → ゲスト) */
-export type HostCommand = QualityChangeCommand | GuestListCommand | HostWelcome | ControllerAssignmentCommand;
+export type HostCommand = QualityChangeCommand | GuestListCommand | HostWelcome | ControllerAssignmentCommand | RumbleCommand;
 
 export type QualityChangeCommand = {
 	type: 'quality_change';

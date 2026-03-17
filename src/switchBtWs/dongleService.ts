@@ -299,6 +299,19 @@ export async function restoreStandardDriver(apiBase: string, vid: string, pid: s
 /** 管理用 WS マップ（controllerId → WebSocket）。切断時に閉じる。 */
 const controllerWsMap = new Map<number, WebSocket>();
 
+/** 振動コールバック（controllerId → (left: 0-1, right: 0-1) => void） */
+const rumbleCallbacks = new Map<number, (left: number, right: number) => void>();
+
+/** コントローラーの振動コールバックを登録する */
+export function onRumble(controllerId: number, cb: (left: number, right: number) => void): void {
+	rumbleCallbacks.set(controllerId, cb);
+}
+
+/** コントローラーの振動コールバックを解除する */
+export function offRumble(controllerId: number): void {
+	rumbleCallbacks.delete(controllerId);
+}
+
 /** 管理用 WS に disconnect を送ってから閉じる */
 export function closeControllerWs(controllerId: number): void {
 	const ws = controllerWsMap.get(controllerId);
@@ -398,6 +411,15 @@ function openControllerWs(
 					store.dispatch(setDongleStatus({ key: dKey, status: 'connecting' }));
 				}
 				prevPaired = !!msg.paired;
+
+				// 振動データをコールバックで通知
+				const rl = (msg as Record<string, unknown>).rumble_left as number ?? 0;
+				const rr = (msg as Record<string, unknown>).rumble_right as number ?? 0;
+				if (rl > 0 || rr > 0 || msg.rumble) {
+					rumbleCallbacks.get(controllerId)?.(rl / 255, rr / 255);
+				} else {
+					rumbleCallbacks.get(controllerId)?.(0, 0);
+				}
 			} else if (msg.type === 'link_keys' && msg.data) {
 				await markDongleAsKnown(device, msg.data);
 			}
