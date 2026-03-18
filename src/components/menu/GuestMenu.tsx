@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { unlockAudio } from '../../audio/unlock';
 import { playRumble, stopRumble } from '../../gamepad/haptic';
+import type { PeerInfo } from '../../webrtc/types';
 import { getOrCreateIdentity } from '../../identity';
 import { generateIdenticonDataUrl } from '../../identity/identicon';
 import type { AppDispatch, RootState } from '../../store';
@@ -38,6 +39,7 @@ export default function GuestMenu() {
 	const peers = useSelector((s: RootState) => s.guest.peers);
 	const error = useSelector((s: RootState) => s.guest.error);
 	const username = useSelector((s: RootState) => s.identity.username);
+	const myUserId = useSelector((s: RootState) => s.identity.publicKeyB64);
 
 	const [inputKey, setInputKey] = useState('');
 	const [hostAvatar, setHostAvatar] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export default function GuestMenu() {
 					} else if (cmd.type === 'quality_change' && typeof cmd.videoQuality === 'string') {
 						dispatch(setVideoQuality(cmd.videoQuality));
 					} else if (cmd.type === 'guest_list' && Array.isArray(cmd.guests)) {
-						dispatch(setPeers(cmd.guests as { userId: string; username: string }[]));
+						dispatch(setPeers(cmd.guests as PeerInfo[]));
 					} else if (cmd.type === 'rumble') {
 						const left = typeof cmd.left === 'number' ? cmd.left : 0;
 						const right = typeof cmd.right === 'number' ? cmd.right : 0;
@@ -214,19 +216,31 @@ export default function GuestMenu() {
 				</div>
 			)}
 
-			{/* 接続済み */}
+			{/* 接続済み（ステータス + ホスト情報 統合） */}
 			{status === 'connected' && (
 				<div className="menu-card">
 					<div className="guest-connection-status">
 						<span className="status-dot connected" />
 						<span>接続中</span>
+						{hostProfile && (
+							<>
+								<span> → </span>
+								{hostAvatar && <img src={hostAvatar} alt="" className="host-avatar-sm" width={20} height={20} style={{ borderRadius: '50%', verticalAlign: 'middle', marginRight: 4 }} />}
+								<span>{hostProfile.username}</span>
+							</>
+						)}
 						{rttMs !== null && (
 							<span className="rtt-badge">{rttMs} ms</span>
 						)}
 					</div>
 					{controllerId !== null && (
 						<p className="hint">
-							{playerNumber ? `P${playerNumber}` : `コントローラー #${controllerId}`} として接続中
+							{playerNumber ? `P${playerNumber}` : `コントローラー #${controllerId}`} として操作中
+						</p>
+					)}
+					{videoQuality && (
+						<p className="hint">
+							受信映像品質: {VIDEO_QUALITY_LABELS[videoQuality as VideoQuality] ?? videoQuality}
 						</p>
 					)}
 					<button type="button" className="btn btn-danger btn-sm" onClick={handleLeave}>
@@ -248,56 +262,71 @@ export default function GuestMenu() {
 				</div>
 			)}
 
-			{/* ホスト情報 */}
-			{hostProfile && (
-				<div className="menu-card">
-					<h4>接続先ホスト</h4>
-					<div className="host-profile-info">
-						{hostAvatar && (
-							<img src={hostAvatar} alt="" className="host-avatar" width={36} height={36} />
-						)}
-						<div className="host-profile-detail">
-							<span className="host-username">{hostProfile.username}</span>
-							<span className="host-userid">{hostProfile.userId.slice(0, 12)}…</span>
-						</div>
-					</div>
-					{videoQuality && (
-						<p className="hint">
-							受信映像品質: {VIDEO_QUALITY_LABELS[videoQuality as VideoQuality] ?? videoQuality}
-						</p>
-					)}
-				</div>
-			)}
 
-			{/* 同室ゲスト */}
-			{status === 'connected' && (
-				<div className="menu-card">
-					<h4>同室のゲスト ({peers.length})</h4>
-					{peers.length === 0 ? (
-						<p className="empty-msg">他のゲストはいません</p>
-					) : (
+
+			{/* メンバー一覧（ホスト + 自身 + 他ゲスト、ホストから受信した peers に自身も含まれる） */}
+			{status === 'connected' && (() => {
+				// peers に自分が含まれていなければ追加
+				const hasSelf = peers.some(p => p.userId === myUserId);
+				const myAssigns: { controllerId: number; playerNumber: number | null }[] = [];
+				if (controllerId != null) myAssigns.push({ controllerId, playerNumber });
+				const allMembers: PeerInfo[] = (hasSelf ? peers : [
+					...peers,
+					{ userId: myUserId ?? '', username, assignments: myAssigns },
+				]).map(p => p.userId === myUserId
+					? { ...p, assignments: myAssigns }
+					: p
+				);
+				// P番号でソート（割り当てありが先、P番号昇順、なしは後ろ）
+				allMembers.sort((a, b) => {
+					const aP = Math.min(...(a.assignments.map(x => x.playerNumber ?? 999)), 999);
+					const bP = Math.min(...(b.assignments.map(x => x.playerNumber ?? 999)), 999);
+					if (aP !== bP) return aP - bP;
+					return a.username.localeCompare(b.username);
+				});
+				return (
+					<div className="menu-card">
+						<h4>メンバー ({allMembers.length})</h4>
 						<div className="peer-list">
-							{peers.map((p) => (
-								<PeerCard key={p.userId} userId={p.userId} username={p.username} />
+							{allMembers.map((p) => (
+								<PeerCard
+									key={p.userId}
+									userId={p.userId}
+									username={p.username}
+									assignments={p.assignments}
+									isHost={p.isHost}
+									isMe={p.userId === myUserId}
+								/>
 							))}
 						</div>
-					)}
-				</div>
-			)}
+					</div>
+				);
+			})()}
 		</div>
 	);
 }
 
-function PeerCard({ userId, username }: { userId: string; username: string }) {
+function PeerCard({ userId, username, assignments, isHost, isMe }: {
+	userId: string;
+	username: string;
+	assignments?: { controllerId: number; playerNumber: number | null }[];
+	isHost?: boolean;
+	isMe?: boolean;
+}) {
 	const [avatar, setAvatar] = useState<string | null>(null);
 	useEffect(() => {
 		generateIdenticonDataUrl(userId).then(setAvatar);
 	}, [userId]);
+	const badges = (assignments ?? [])
+		.filter(a => a.playerNumber != null)
+		.sort((a, b) => (a.playerNumber ?? 0) - (b.playerNumber ?? 0))
+		.map(a => `P${a.playerNumber}`);
 	return (
-		<div className="peer-card">
+		<div className={`peer-card${isMe ? ' is-me' : ''}`}>
+			{badges.length > 0 && <span className="player-badge">{badges.join(' ')}</span>}
 			{avatar && <img src={avatar} alt="" className="peer-avatar" width={28} height={28} />}
 			<div className="peer-info">
-				<span className="peer-name">{username}</span>
+				<span className="peer-name">{username}{isHost ? ' (ホスト)' : ''}{isMe ? ' (自分)' : ''}</span>
 				<span className="peer-id">{userId.slice(0, 12)}…</span>
 			</div>
 		</div>

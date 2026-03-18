@@ -257,17 +257,35 @@ export class HostWebRTC {
 		}
 	}
 
-	broadcastGuestList(): void {
-		const allGuests: PeerInfo[] = [];
+	broadcastGuestList(memberAssignments?: Map<string, { controllerId: number; playerNumber: number | null }[]>): void {
+		// ホスト自身を含む全メンバーの割り当て一覧を構築
+		const allMembers: PeerInfo[] = [];
+
+		// ホスト自身
+		if (this.hostProfile) {
+			allMembers.push({
+				userId: this.hostProfile.userId,
+				username: this.hostProfile.username,
+				isHost: true,
+				assignments: memberAssignments?.get(this.hostProfile.userId) ?? [],
+			});
+		}
+
+		// 接続中のゲスト
 		for (const session of this.sessions.values()) {
 			if (session.connectionState === 'connected') {
-				allGuests.push({ userId: session.userId, username: session.username });
+				allMembers.push({
+					userId: session.userId,
+					username: session.username,
+					assignments: memberAssignments?.get(session.userId) ?? [],
+				});
 			}
 		}
+
+		// 各ゲストに自分を含む全メンバー一覧を送信
 		for (const session of this.sessions.values()) {
 			if (session.commandChannel?.readyState !== 'open') continue;
-			const peers = allGuests.filter((g) => g.userId !== session.userId);
-			const cmd: GuestListCommand = { type: 'guest_list', guests: peers };
+			const cmd: GuestListCommand = { type: 'guest_list', guests: allMembers };
 			try {
 				session.commandChannel.send(JSON.stringify(cmd));
 			} catch { /* ignore */ }

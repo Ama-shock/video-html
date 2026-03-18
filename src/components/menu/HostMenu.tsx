@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { loadGuest, saveGuest } from '../../db/guestRegistry';
+import { verifySignature } from '../../identity/index';
 import type { AppDispatch, RootState } from '../../store';
 import {
 	addPendingGuest,
@@ -153,6 +154,8 @@ export default function HostMenu() {
 					await hostRtcRef.current?.handleJoinRequest(req, 'high', assignment);
 					dispatch(updateGuestConnectionDetail({ userId: req.userId, detail: 'Answer を Push 送信済み' }));
 					dispatch(allowGuest({ userId: req.userId, controllerId: cid }));
+					// 自動承認時に lastSeen を更新
+					await saveGuest({ ...existing, lastSeen: new Date().toISOString() });
 				}
 			}
 		};
@@ -186,12 +189,45 @@ export default function HostMenu() {
 					};
 					if (labels[state]) dispatch(updateGuestConnectionDetail({ userId, detail: labels[state] }));
 					if (state === 'failed' || state === 'closed') {
+						// ゲスト切断時に lastSeen を更新
+						const guest = store.getState().host.guests.find(g => g.userId === userId);
+						if (guest) {
+							loadGuest(userId).then(existing => {
+								if (existing) saveGuest({ ...existing, username: guest.username, lastSeen: new Date().toISOString() });
+							});
+						}
 						dispatch(removeGuest(userId));
 					}
 					// ゲスト一覧の変更を全ゲストにブロードキャスト
 					if (state === 'connected' || state === 'failed' || state === 'closed') {
 						// connected 時はデータチャネルがまだ開いていない場合があるため少し待つ
-						setTimeout(() => hostRtcRef.current?.broadcastGuestList(), state === 'connected' ? 500 : 0);
+						setTimeout(() => {
+							const s = store.getState();
+							const guests = s.host.guests;
+							const pMap = controllerPlayerMap(s.dongle.controllers);
+							const assigns = new Map<string, { controllerId: number; playerNumber: number | null }[]>();
+							// ゲストの割り当て
+							for (const g of guests) {
+								if (g.controllerId != null) {
+									assigns.set(g.userId, [{ controllerId: g.controllerId, playerNumber: pMap.get(g.controllerId) ?? null }]);
+								}
+							}
+							// ホストの割り当て（複数コントローラー対応）
+							const myKey = s.identity.publicKeyB64;
+							if (myKey) {
+								const hostAssigns: { controllerId: number; playerNumber: number | null }[] = [];
+								for (const gp of s.gamepad.gamepads) {
+									if (gp.relayActive && gp.relayControllerId != null) {
+										hostAssigns.push({ controllerId: gp.relayControllerId, playerNumber: pMap.get(gp.relayControllerId) ?? null });
+									}
+								}
+								if (s.gamepad.keyboardRelayActive && s.gamepad.keyboardRelayControllerId != null) {
+									hostAssigns.push({ controllerId: s.gamepad.keyboardRelayControllerId, playerNumber: pMap.get(s.gamepad.keyboardRelayControllerId) ?? null });
+								}
+								if (hostAssigns.length > 0) assigns.set(myKey, hostAssigns);
+							}
+							hostRtcRef.current?.broadcastGuestList(assigns);
+						}, state === 'connected' ? 500 : 0);
 					}
 				},
 				onControllerInput: (userId, input) => {
@@ -210,8 +246,45 @@ export default function HostMenu() {
 						client.sendGamepadInput(buttonStatus, axes);
 					}
 				},
-				onGuestProfile: (userId, profile) => {
+				onGuestProfile: async (userId, profile) => {
+					// 署名検証: 公開鍵の所有者確認 + リプレイ攻撃防止
+					try {
+						const b64decode = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+						const pubKeyRaw = b64decode(profile.userId);
+						const timestamp = profile.timestamp ?? 0;
+						const message = new TextEncoder().encode(profile.userId + profile.username + timestamp);
+						const sig = b64decode(profile.signature);
+						const valid = await verifySignature(pubKeyRaw, message, sig);
+						if (!valid) {
+							console.warn('[host] guest signature INVALID — disconnecting', userId);
+							hostRtcRef.current?.disconnectGuest(userId);
+							dispatch(removeGuest(userId));
+							return;
+						}
+						// リプレイ攻撃防止: タイムスタンプが 5 分以内か確認
+						const MAX_SKEW_MS = 5 * 60 * 1000;
+						if (Math.abs(Date.now() - timestamp) > MAX_SKEW_MS) {
+							console.warn('[host] guest timestamp too old/future — disconnecting', userId, timestamp);
+							hostRtcRef.current?.disconnectGuest(userId);
+							dispatch(removeGuest(userId));
+							return;
+						}
+					} catch (e) {
+						console.warn('[host] signature verification error — disconnecting', userId, e);
+						hostRtcRef.current?.disconnectGuest(userId);
+						dispatch(removeGuest(userId));
+						return;
+					}
 					dispatch(updateGuestUsername({ userId, username: profile.username }));
+					// ゲスト情報を IndexedDB に保存
+					const existing = await loadGuest(userId);
+					await saveGuest({
+						userId,
+						username: profile.username,
+						allowed: existing?.allowed ?? false,
+						controllerId: existing?.controllerId ?? null,
+						lastSeen: new Date().toISOString(),
+					});
 				},
 			});
 			if (myPublicKey) rtc.setHostProfile(myPublicKey, myUsername);

@@ -20,8 +20,10 @@ import {
 } from '../store/appSlice';
 import { setConnectionMap, setKnownDongles, setLinkKeysAvailable } from '../store/dongleSlice';
 import { dongleKey } from '../switchBtWs/types';
-import { setKeyboardKeymap, setKeymap } from '../store/gamepadSlice';
+import { setGamepads, setKeyboardKeymap, setKeymap } from '../store/gamepadSlice';
+import { setSelectedDevice } from '../store/guestSlice';
 import { setIdentity, setUsername } from '../store/identitySlice';
+import { store } from '../store';
 import { startGlobalWs, stopGlobalWs } from '../switchBtWs/dongleWs';
 import ProfileSetup from './identity/ProfileSetup';
 import Layout from './Layout';
@@ -97,6 +99,52 @@ export default function App() {
 		window.addEventListener('hashchange', onHashChange);
 		return () => window.removeEventListener('hashchange', onHashChange);
 	}, [dispatch]);
+
+	// ゲームパッドのポーリング（メニューが開いていなくても常時動作）
+	const gamepads = useSelector((s: RootState) => s.gamepad.gamepads);
+	useEffect(() => {
+		const update = () => {
+			const { listConnectedGamepads } = require('../gamepad') as typeof import('../gamepad');
+			const gps = listConnectedGamepads();
+			const current = store.getState().gamepad.gamepads;
+			const mapped = gps.map((gp: Gamepad) => ({
+				index: gp.index,
+				id: gp.id,
+				connected: gp.connected,
+				relayActive: current.find((g: any) => g.index === gp.index)?.relayActive ?? false,
+				relayControllerId: current.find((g: any) => g.index === gp.index)?.relayControllerId ?? null,
+			}));
+			dispatch(setGamepads(mapped));
+		};
+		window.addEventListener('gamepadconnected', update);
+		window.addEventListener('gamepaddisconnected', update);
+		update();
+		const pollTimer = setInterval(update, 2000);
+		return () => {
+			window.removeEventListener('gamepadconnected', update);
+			window.removeEventListener('gamepaddisconnected', update);
+			clearInterval(pollTimer);
+		};
+	}, [dispatch]);
+
+	// ゲスト: 入力デバイスの自動選択
+	useEffect(() => {
+		if (mode !== 'guest') return;
+		const sel = store.getState().guest.selectedDevice;
+		if (gamepads.length > 0) {
+			if (!sel || sel.type === 'keyboard') {
+				dispatch(setSelectedDevice({ type: 'gamepad', index: gamepads[0].index }));
+			} else if (sel.type === 'gamepad' && !gamepads.some((g: any) => g.index === sel.index)) {
+				dispatch(setSelectedDevice({ type: 'gamepad', index: gamepads[0].index }));
+			}
+		} else {
+			if (!sel) {
+				dispatch(setSelectedDevice({ type: 'keyboard' }));
+			} else if (sel.type === 'gamepad') {
+				dispatch(setSelectedDevice({ type: 'keyboard' }));
+			}
+		}
+	}, [mode, gamepads, dispatch]);
 
 	if (!initialized) {
 		return <div className="splash">読み込み中...</div>;

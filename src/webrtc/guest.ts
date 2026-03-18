@@ -117,8 +117,9 @@ export class GuestWebRTC {
 		await waitForIceGathering(pc);
 		this.callbacks.onProgress?.('ICE 収集完了');
 
-		// 署名
-		const message = new TextEncoder().encode(identity.publicKeyB64 + username);
+		// 署名（タイムスタンプ付き — リプレイ攻撃防止）
+		const timestamp = Date.now();
+		const message = new TextEncoder().encode(identity.publicKeyB64 + username + timestamp);
 		const sig = await signMessage(identity, message);
 
 		const finalSdp = pc.localDescription?.sdp ?? '';
@@ -134,6 +135,7 @@ export class GuestWebRTC {
 			profile: {
 				userId: identity.publicKeyB64,
 				username,
+				timestamp,
 				signature: toBase64Url(sig),
 			},
 		};

@@ -6,7 +6,8 @@
 export type GuestProfile = {
 	userId: string; // Ed25519 公開鍵 base64url
 	username: string;
-	signature: string; // sign(userId || username) base64url — なりすまし防止
+	timestamp: number; // 署名時の Unix ミリ秒 — リプレイ攻撃防止
+	signature: string; // sign(userId || username || timestamp) base64url
 };
 
 /** ゲスト → ホスト: 入室要求 (WebPush: SDP + 最小限の識別情報のみ) */
@@ -81,7 +82,7 @@ export type QualityChangeCommand = {
 	videoQuality: string; // 'high' | 'medium' | 'low'
 };
 
-/** 同室ゲスト一覧通知 */
+/** メンバー一覧通知（ホスト + 全ゲスト） */
 export type GuestListCommand = {
 	type: 'guest_list';
 	guests: PeerInfo[];
@@ -90,4 +91,7 @@ export type GuestListCommand = {
 export type PeerInfo = {
 	userId: string;
 	username: string;
+	isHost?: boolean;
+	/** 割り当てられたコントローラー（複数対応） */
+	assignments: { controllerId: number; playerNumber: number | null }[];
 };

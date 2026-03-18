@@ -7,7 +7,6 @@ import {
 	saveKeymap,
 	saveSettings,
 } from '../../db/settings';
-import { listConnectedGamepads } from '../../gamepad';
 import { startRelay, stopRelay } from '../../gamepad/relay';
 import { playRumble, stopRumble, setActiveGamepad } from '../../gamepad/haptic';
 import { generateIdenticonDataUrl } from '../../identity/identicon';
@@ -17,7 +16,6 @@ import { store, type AppDispatch, type RootState } from '../../store';
 import { setSwitchBtWsPort } from '../../store/appSlice';
 import { setConnectionMap } from '../../store/dongleSlice';
 import {
-	setGamepads,
 	setKeyboardKeymap as setKeyboardKeymapAction,
 	setKeyboardRelayActive,
 	setKeymap,
@@ -26,6 +24,7 @@ import {
 import { type SelectedDevice, setSelectedDevice } from '../../store/guestSlice';
 import { type GuestStatus, setGuestController } from '../../store/hostSlice';
 import { getOrCreateClient } from '../../switchBtWs/clientCache';
+import { loadGuest, saveGuest } from '../../db/guestRegistry';
 import { getHostRtc } from '../../webrtc/hostConnection';
 import type { ConnectionMapEntry, Controller } from '../../switchBtWs/types';
 import { controllerPlayerMap, dongleKey } from '../../switchBtWs/types';
@@ -81,33 +80,7 @@ export default function GamepadMenu() {
 		setPortEditing(false);
 	};
 
-	// Gamepad polling — イベント + 定期ポーリングで検出漏れを防ぐ
-	useEffect(() => {
-		const update = () => {
-			const gps = listConnectedGamepads();
-			// 現在の store から relay 状態を取得（stale closure 回避）
-			const current = store.getState().gamepad.gamepads;
-			const mapped = gps.map((gp) => ({
-				index: gp.index,
-				id: gp.id,
-				connected: gp.connected,
-				relayActive: current.find((g) => g.index === gp.index)?.relayActive ?? false,
-				relayControllerId:
-					current.find((g) => g.index === gp.index)?.relayControllerId ?? null,
-			}));
-			dispatch(setGamepads(mapped));
-		};
-		window.addEventListener('gamepadconnected', update);
-		window.addEventListener('gamepaddisconnected', update);
-		update();
-		// 2秒ごとにポーリング（gamepadconnected が発火しないケースへの対応）
-		const pollTimer = setInterval(update, 2000);
-		return () => {
-			window.removeEventListener('gamepadconnected', update);
-			window.removeEventListener('gamepaddisconnected', update);
-			clearInterval(pollTimer);
-		};
-	}, [dispatch]);
+	// ゲームパッドポーリング + 自動選択は App.tsx で常時動作
 
 	// Sync keyboard keymap to the keyboard module
 	useEffect(() => {
@@ -150,6 +123,34 @@ export default function GamepadMenu() {
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [controllers, connectionMap, gamepads]);
 
+	/** 割り当て情報を全ゲストにブロードキャスト */
+	const broadcastMemberAssignments = () => {
+		const s = store.getState();
+		const pMap = controllerPlayerMap(s.dongle.controllers);
+		const assigns = new Map<string, { controllerId: number; playerNumber: number | null }[]>();
+		// ゲスト
+		for (const g of s.host.guests) {
+			if (g.controllerId != null) {
+				assigns.set(g.userId, [{ controllerId: g.controllerId, playerNumber: pMap.get(g.controllerId) ?? null }]);
+			}
+		}
+		// ホスト（複数コントローラー）
+		const myKey = s.identity.publicKeyB64;
+		if (myKey) {
+			const hostAssigns: { controllerId: number; playerNumber: number | null }[] = [];
+			for (const gp of s.gamepad.gamepads) {
+				if (gp.relayActive && gp.relayControllerId != null) {
+					hostAssigns.push({ controllerId: gp.relayControllerId, playerNumber: pMap.get(gp.relayControllerId) ?? null });
+				}
+			}
+			if (s.gamepad.keyboardRelayActive && s.gamepad.keyboardRelayControllerId != null) {
+				hostAssigns.push({ controllerId: s.gamepad.keyboardRelayControllerId, playerNumber: pMap.get(s.gamepad.keyboardRelayControllerId) ?? null });
+			}
+			if (hostAssigns.length > 0) assigns.set(myKey, hostAssigns);
+		}
+		getHostRtc()?.broadcastGuestList(assigns);
+	};
+
 	/** 接続マップを更新して IndexedDB に保存 */
 	const persistConnectionMap = (entries: ConnectionMapEntry[]) => {
 		dispatch(setConnectionMap(entries));
@@ -183,6 +184,10 @@ export default function GamepadMenu() {
 			dispatch(setKeyboardRelayActive({ active: true, controllerId }));
 		} else {
 			dispatch(setGuestController({ userId: source.userId, controllerId }));
+			// ゲストの controllerId を IndexedDB に保存
+			loadGuest(source.userId).then(existing => {
+				if (existing) saveGuest({ ...existing, controllerId, lastSeen: new Date().toISOString() });
+			});
 			// ゲストにコントローラー割り当てを通知（P番号付き）
 			const pNum = playerMap.get(controllerId) ?? null;
 			getHostRtc()?.sendCommand(source.userId, {
@@ -204,6 +209,8 @@ export default function GamepadMenu() {
 			{ dongleKey: dKey, sourceType: source.type, sourceId },
 		];
 		persistConnectionMap(newMap);
+		// 割り当て変更をゲストに通知
+		broadcastMemberAssignments();
 	};
 
 	/** リレーのみ解除（接続マップは変更しない） */
@@ -234,6 +241,7 @@ export default function GamepadMenu() {
 		unassignSourceRelay(controller.id);
 		const dKey = dongleKey(controller.vid, controller.pid, controller.instance);
 		persistConnectionMap(connectionMap.filter((e) => e.dongleKey !== dKey));
+		broadcastMemberAssignments();
 	};
 
 	/** 割り当て済みの入力ソースを取得 */
