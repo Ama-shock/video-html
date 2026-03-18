@@ -17,6 +17,7 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 type StatusCallback = (status: SwitchBtWsStatus) => void;
 type ConnectionCallback = (status: ConnectionStatus) => void;
 type LinkKeysCallback = (data: string) => void;
+type RumbleCallback = (left: number, right: number) => void;
 
 export class SwitchBtWsClient {
 	private ws: WebSocket | null = null;
@@ -24,6 +25,7 @@ export class SwitchBtWsClient {
 	private statusCb: StatusCallback | null = null;
 	private connectionCb: ConnectionCallback | null = null;
 	private linkKeysCb: LinkKeysCallback | null = null;
+	private rumbleCb: RumbleCallback | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private shouldConnect = false;
 	public controllerId: number;
@@ -43,6 +45,10 @@ export class SwitchBtWsClient {
 	}
 	onLinkKeys(cb: LinkKeysCallback): this {
 		this.linkKeysCb = cb;
+		return this;
+	}
+	onRumble(cb: RumbleCallback): this {
+		this.rumbleCb = cb;
 		return this;
 	}
 
@@ -75,12 +81,28 @@ export class SwitchBtWsClient {
 			try {
 				const msg = JSON.parse(ev.data as string) as { type: string; [k: string]: unknown };
 				if (msg.type === 'status') {
+					const rl = (msg.rumble_left as number) ?? 0;
+					const rr = (msg.rumble_right as number) ?? 0;
 					this.statusCb?.({
 						paired: msg.paired as boolean,
 						rumble: msg.rumble as boolean,
-						rumble_left: (msg.rumble_left as number) ?? 0,
-						rumble_right: (msg.rumble_right as number) ?? 0,
+						rumble_left: rl,
+						rumble_right: rr,
 					});
+					if (msg.rumble || rl > 0 || rr > 0) {
+						console.log(`[client:${this.controllerId}] rumble rl=${rl} rr=${rr} hasCb=${!!this.rumbleCb}`);
+					}
+					if (this.rumbleCb) {
+						if (rl > 0 || rr > 0 || msg.rumble) this.rumbleCb(rl / 255, rr / 255);
+						else this.rumbleCb(0, 0);
+					}
+				} else if (msg.type === 'rumble') {
+					const left = (msg.left as number ?? 0) / 255;
+					const right = (msg.right as number ?? 0) / 255;
+					if (this.rumbleCb) {
+						if (left > 0 || right > 0) this.rumbleCb(left, right);
+						else this.rumbleCb(0, 0);
+					}
 				} else if (msg.type === 'link_keys') {
 					this.linkKeysCb?.(msg.data as string);
 				}

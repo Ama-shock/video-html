@@ -9,6 +9,7 @@ import {
 } from '../../db/settings';
 import { listConnectedGamepads } from '../../gamepad';
 import { startRelay, stopRelay } from '../../gamepad/relay';
+import { playRumble, stopRumble, setActiveGamepad } from '../../gamepad/haptic';
 import { generateIdenticonDataUrl } from '../../identity/identicon';
 import { KEYBOARD_GAMEPAD_INDEX, setKeyboardKeymap } from '../../keyboard/index';
 import { defaultKeyboardKeymap } from '../../keyboard/keymap';
@@ -57,6 +58,7 @@ export default function GamepadMenu() {
 	const connectionMap = useSelector((s: RootState) => s.dongle.connectionMap);
 
 	const isGuest = mode === 'guest';
+
 	const error = useSelector((s: RootState) => s.dongle.error);
 	const selectedDevice = useSelector((s: RootState) => s.guest.selectedDevice);
 
@@ -112,6 +114,42 @@ export default function GamepadMenu() {
 		setKeyboardKeymap(keyboardKeymap);
 	}, [keyboardKeymap]);
 
+	// 接続マップの自動復元: paired コントローラーに対して保存済みの割り当てを復元
+	useEffect(() => {
+		for (const entry of connectionMap) {
+			const ctrl = controllers.find(
+				(c) => dongleKey(c.vid, c.pid, c.instance) === entry.dongleKey && c.paired,
+			);
+			if (!ctrl) continue;
+
+			// 既にリレーが動いているならスキップ
+			const alreadyAssigned = getAssignedSource(ctrl.id);
+			if (alreadyAssigned) continue;
+
+			if (entry.sourceType === 'gamepad') {
+				const gpIndex = parseInt(entry.sourceId, 10);
+				const gp = gamepads.find((g) => g.index === gpIndex && !g.relayActive);
+				if (gp) {
+					const client = getOrCreateClient(`ws://localhost:${wsPort}`, ctrl.id);
+					startRelay({ gamepadIndex: gp.index, client, keymap });
+					dispatch(setRelayActive({ index: gp.index, active: true, controllerId: ctrl.id }));
+					setActiveGamepad(gp.index);
+					client.onRumble((left, right) => {
+						if (left > 0 || right > 0) playRumble(left, right);
+						else stopRumble();
+					});
+				}
+			} else if (entry.sourceType === 'keyboard') {
+				if (!keyboardRelayActive) {
+					const client = getOrCreateClient(`ws://localhost:${wsPort}`, ctrl.id);
+					startRelay({ gamepadIndex: KEYBOARD_GAMEPAD_INDEX, client, keymap });
+					dispatch(setKeyboardRelayActive({ active: true, controllerId: ctrl.id }));
+				}
+			}
+		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [controllers, connectionMap, gamepads]);
+
 	/** 接続マップを更新して IndexedDB に保存 */
 	const persistConnectionMap = (entries: ConnectionMapEntry[]) => {
 		dispatch(setConnectionMap(entries));
@@ -133,6 +171,12 @@ export default function GamepadMenu() {
 			const client = getOrCreateClient(`ws://localhost:${wsPort}`, controllerId);
 			startRelay({ gamepadIndex: source.index, client, keymap });
 			dispatch(setRelayActive({ index: source.index, active: true, controllerId }));
+			// ローカルゲームパッドに振動を転送（WS client 経由）
+			setActiveGamepad(source.index);
+			client.onRumble((left, right) => {
+				if (left > 0 || right > 0) playRumble(left, right);
+				else stopRumble();
+			});
 		} else if (source.type === 'keyboard') {
 			const client = getOrCreateClient(`ws://localhost:${wsPort}`, controllerId);
 			startRelay({ gamepadIndex: KEYBOARD_GAMEPAD_INDEX, client, keymap });
@@ -168,6 +212,7 @@ export default function GamepadMenu() {
 		if (gp) {
 			stopRelay(gp.index);
 			dispatch(setRelayActive({ index: gp.index, active: false, controllerId: null }));
+			setActiveGamepad(null);
 		}
 		if (keyboardRelayActive && keyboardRelayControllerId === controllerId) {
 			stopRelay(KEYBOARD_GAMEPAD_INDEX);
@@ -296,6 +341,29 @@ export default function GamepadMenu() {
 							/>
 						))
 					)}
+
+					{/* 未接続ドングルに割り当てられた入力ソース */}
+					{connectionMap
+						.filter((e) => !controllers.some((c) => dongleKey(c.vid, c.pid, c.instance) === e.dongleKey))
+						.map((e) => (
+							<div key={`offline-${e.dongleKey}`} className="dongle-slot offline">
+								<div className="dongle-slot-header">
+									<span className="mono">{e.dongleKey}</span>
+									<span className="status-badge offline">未接続</span>
+								</div>
+								<div className="dongle-slot-assigned">
+									<span>{e.sourceType === 'keyboard' ? 'Keyboard' : e.sourceType === 'gamepad' ? `Gamepad #${e.sourceId}` : `Guest ${e.sourceId}`}</span>
+									<button
+										type="button"
+										className="btn btn-secondary btn-sm"
+										onClick={() => persistConnectionMap(connectionMap.filter((m) => m.dongleKey !== e.dongleKey))}
+									>
+										解除
+									</button>
+								</div>
+							</div>
+						))
+					}
 
 					{unassignedSources.length > 0 && (
 						<>

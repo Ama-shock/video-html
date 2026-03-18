@@ -8,6 +8,7 @@
  */
 
 import { saveKnownDongles } from '../db/settings';
+import { playRumble, stopRumble } from '../gamepad/haptic';
 import { store } from '../store';
 import {
 	setControllers,
@@ -397,6 +398,7 @@ function openControllerWs(
 				data?: string;
 			};
 
+			console.debug('[ws:' + controllerId + '] msg:', msg.type, 'rumble=', msg.rumble, 'rl=', (msg as any).rumble_left);
 			if (msg.type === 'status') {
 				// 手動切断済みなら WS ステータスで上書きしない
 				const manuallyDc = store.getState().dongle.manuallyDisconnected[dKey];
@@ -416,13 +418,17 @@ function openControllerWs(
 				}
 				prevPaired = !!msg.paired;
 
-				// 振動データをコールバックで通知
+				// 振動データ: ローカルゲームパッドに直接振動 + コールバック通知
 				const rl = (msg as Record<string, unknown>).rumble_left as number ?? 0;
 				const rr = (msg as Record<string, unknown>).rumble_right as number ?? 0;
 				if (rl > 0 || rr > 0 || msg.rumble) {
-					rumbleCallbacks.get(controllerId)?.(rl / 255, rr / 255);
+					const left = rl / 255;
+					const right = rr / 255;
+					playRumble(left, right);
+					rumpbleCallbacks.get(controllerId)?.forEach(cb => cb(left, right));
 				} else {
-					rumbleCallbacks.get(controllerId)?.(0, 0);
+					stopRumble();
+					rumpbleCallbacks.get(controllerId)?.forEach(cb => cb(0, 0));
 				}
 			} else if (msg.type === 'link_keys' && msg.data) {
 				await markDongleAsKnown(device, msg.data);
