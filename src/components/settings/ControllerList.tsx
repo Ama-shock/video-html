@@ -326,7 +326,7 @@ function DongleStatusBadge({
 		</span>
 	);
 
-	if (paired)
+	if (paired && status !== 'disconnected')
 		return (
 			<>
 				<span className="status-badge paired">接続中</span>
