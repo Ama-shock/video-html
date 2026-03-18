@@ -89,10 +89,7 @@ export class SwitchBtWsClient {
 						rumble_left: rl,
 						rumble_right: rr,
 					});
-					if (msg.rumble || rl > 0 || rr > 0) {
-						console.log(`[client:${this.controllerId}] rumble rl=${rl} rr=${rr} hasCb=${!!this.rumbleCb}`);
-					}
-					if (this.rumbleCb) {
+										if (this.rumbleCb) {
 						if (rl > 0 || rr > 0 || msg.rumble) this.rumbleCb(rl / 255, rr / 255);
 						else this.rumbleCb(0, 0);
 					}

@@ -33,12 +33,15 @@ export function playRumble(left: number, right: number): void {
 	const gp = navigator.getGamepads()[activeGamepadIndex];
 	if (!gp) return;
 
-	// Chrome: vibrationActuator.playEffect
+
+	// Chrome / Firefox 130+: vibrationActuator.playEffect
+	// duration を短く (50ms) して、継続的な rumble はイベントの連続で維持。
+	// 短いパルスは 50ms で自然に止まり、長い振動は連続イベントで持続する。
 	const actuator = (gp as any).vibrationActuator;
 	if (actuator?.playEffect) {
 		actuator.playEffect('dual-rumble', {
 			startDelay: 0,
-			duration: 300,
+			duration: 50,
 			weakMagnitude: left,
 			strongMagnitude: right,
 		}).catch(() => { /* unsupported */ });
@@ -49,7 +52,7 @@ export function playRumble(left: number, right: number): void {
 	const haptics = (gp as any).hapticActuators;
 	if (haptics?.length > 0) {
 		const intensity = Math.max(left, right);
-		haptics[0].pulse(intensity, 300).catch(() => { /* unsupported */ });
+		haptics[0].pulse(intensity, 50).catch(() => { /* unsupported */ });
 	}
 }
 

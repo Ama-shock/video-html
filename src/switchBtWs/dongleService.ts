@@ -398,7 +398,6 @@ function openControllerWs(
 				data?: string;
 			};
 
-			console.debug('[ws:' + controllerId + '] msg:', msg.type, 'rumble=', msg.rumble, 'rl=', (msg as any).rumble_left);
 			if (msg.type === 'status') {
 				// 手動切断済みなら WS ステータスで上書きしない
 				const manuallyDc = store.getState().dongle.manuallyDisconnected[dKey];
@@ -425,10 +424,10 @@ function openControllerWs(
 					const left = rl / 255;
 					const right = rr / 255;
 					playRumble(left, right);
-					rumpbleCallbacks.get(controllerId)?.forEach(cb => cb(left, right));
+					rumbleCallbacks.get(controllerId)?.forEach(cb => cb(left, right));
 				} else {
 					stopRumble();
-					rumpbleCallbacks.get(controllerId)?.forEach(cb => cb(0, 0));
+					rumbleCallbacks.get(controllerId)?.forEach(cb => cb(0, 0));
 				}
 			} else if (msg.type === 'link_keys' && msg.data) {
 				await markDongleAsKnown(device, msg.data);
