@@ -398,17 +398,21 @@ function openControllerWs(
 			};
 
 			if (msg.type === 'status') {
-				if (msg.paired) {
-					store.dispatch(setDongleStatus({ key: dKey, status: 'paired' }));
+				// 手動切断済みなら WS ステータスで上書きしない
+				const manuallyDc = store.getState().dongle.manuallyDisconnected[dKey];
+				if (!manuallyDc) {
+					if (msg.paired) {
+						store.dispatch(setDongleStatus({ key: dKey, status: 'paired' }));
 
-					// paired に遷移した瞬間のみ処理（毎 tick ではなく）
-					if (!prevPaired) {
-						await markDongleAsKnown(device);
+						// paired に遷移した瞬間のみ処理（毎 tick ではなく）
+						if (!prevPaired) {
+							await markDongleAsKnown(device);
+						}
+					} else if (msg.syncing) {
+						store.dispatch(setDongleStatus({ key: dKey, status: 'syncing' }));
+					} else {
+						store.dispatch(setDongleStatus({ key: dKey, status: 'connecting' }));
 					}
-				} else if (msg.syncing) {
-					store.dispatch(setDongleStatus({ key: dKey, status: 'syncing' }));
-				} else {
-					store.dispatch(setDongleStatus({ key: dKey, status: 'connecting' }));
 				}
 				prevPaired = !!msg.paired;
 
@@ -430,10 +434,12 @@ function openControllerWs(
 
 	ws.onclose = () => {
 		controllerWsMap.delete(controllerId);
+		store.dispatch(setDongleStatus({ key: dKey, status: 'disconnected' }));
 	};
 
 	ws.onerror = () => {
 		controllerWsMap.delete(controllerId);
+		store.dispatch(setDongleStatus({ key: dKey, status: 'error' }));
 	};
 }
 
