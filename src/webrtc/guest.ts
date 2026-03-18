@@ -61,9 +61,10 @@ export class GuestWebRTC {
 			};
 			this.callbacks.onProgress?.(stateLabels[pc.connectionState] ?? pc.connectionState);
 			this.callbacks.onConnectionState?.(pc.connectionState);
-			if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+			if (pc.connectionState === 'closed') {
 				this.close();
 			}
+			// 'failed' では close() しない — Firefox は ICE restart で復帰する場合がある
 		};
 
 		pc.ontrack = (ev) => {
@@ -150,6 +151,8 @@ export class GuestWebRTC {
 	 */
 	async handleAnswer(msg: JoinAccepted): Promise<void> {
 		if (!this.pc) throw new Error('No active peer connection');
+		// stable 状態（既に Answer 適用済み）なら無視（Push 重複受信対策）
+		if (this.pc.signalingState === 'stable') return;
 		this.callbacks.onProgress?.('Answer 受信 — ICE 接続中...');
 		await this.pc.setRemoteDescription({ type: 'answer', sdp: msg.answerSdp });
 	}

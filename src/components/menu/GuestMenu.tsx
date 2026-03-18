@@ -110,10 +110,11 @@ export default function GuestMenu() {
 				onProgress: (detail) => dispatch(setStatusDetail(detail)),
 				onConnectionState: (state) => {
 					if (state === 'connected') dispatch(setStatus('connected'));
-					else if (state === 'failed' || state === 'closed') {
+					else if (state === 'closed') {
 						setGuestRtc(null);
 						dispatch(reset());
 					}
+					// 'failed' は即座にリセットしない（Firefox は一時的に failed → 復帰することがある）
 				},
 				onControllerAssignment: (cid) => {
 					dispatch(setControllerAssignment({ controllerId: cid, playerNumber: null }));
